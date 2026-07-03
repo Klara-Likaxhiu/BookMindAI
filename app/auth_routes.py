@@ -18,6 +18,8 @@ from app.supabase_client import (
     email_redirect,
     email_verification_enabled,
     get_user,
+    get_user_by_email,
+    is_email_verified,
     merge_public_user,
     refresh_session,
     require_supabase,
@@ -68,8 +70,11 @@ class ResetPasswordRequest(BaseModel):
 
 
 class VerifyEmailRequest(BaseModel):
-    token: str
+    token: str | None = None
+    token_hash: str | None = None
     type: str = Field(default="signup", description="Supabase OTP type")
+    access_token: str | None = None
+    refresh_token: str | None = None
 
 
 class ResendVerificationRequest(BaseModel):
@@ -203,7 +208,7 @@ def signup(data: SignupRequest) -> dict:
             str(data.email),
             data.password,
             username=data.username.strip(),
-            email_redirect_to=email_redirect("/verify-email"),
+            email_redirect_to=email_redirect("verify-email.html"),
         )
     except SupabaseAuthError as exc:
         if exc.status_code == 422 or "already registered" in exc.message.lower():
@@ -329,15 +334,50 @@ def apple_sign_in(data: OAuthRequest) -> dict:
 def verify_email(data: VerifyEmailRequest) -> dict:
     try:
         require_supabase()
-        result = verify_otp(data.token, data.type)
+    except SupabaseAuthError as exc:
+        _raise_supabase_error(exc)
+
+    otp_type = data.type or "signup"
+
+    # Implicit / PKCE callback: Supabase redirects with access_token in the URL hash.
+    if data.access_token:
+        try:
+            supabase_user = get_user(data.access_token)
+        except SupabaseAuthError as exc:
+            _raise_supabase_error(exc)
+
+        if not is_email_verified(supabase_user):
+            raise HTTPException(
+                status_code=400,
+                detail="Email is not verified yet. Use the link from your inbox or resend verification.",
+            )
+
+        profile = auth_db.get_profile_by_id(supabase_user.get("id", "")) or _save_profile_from_supabase_user(
+            supabase_user
+        )
+        public = merge_public_user(supabase_user, profile)
+        return {
+            "message": "Email verified successfully.",
+            "verified": True,
+            "user": public,
+        }
+
+    token = (data.token_hash or data.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Invalid verification link.")
+
+    try:
+        result = verify_otp(token, otp_type)
     except SupabaseAuthError as exc:
         _raise_supabase_error(exc)
 
     user = result.get("user") or {}
     profile = auth_db.get_profile_by_id(user.get("id", "")) or _save_profile_from_supabase_user(user)
+    public = merge_public_user(user, profile)
     return {
-        "message": "Email verified.",
-        **session_response(result, remember_me=True, profile=profile),
+        "message": "Email verified successfully.",
+        "verified": True,
+        "user": public,
     }
 
 
@@ -345,7 +385,7 @@ def verify_email(data: VerifyEmailRequest) -> dict:
 def resend_verification(data: ResendVerificationRequest) -> dict:
     try:
         require_supabase()
-        resend_signup(str(data.email), email_redirect_to=email_redirect("/verify-email"))
+        resend_signup(str(data.email), email_redirect_to=email_redirect("verify-email.html"))
     except SupabaseAuthError as exc:
         _raise_supabase_error(exc)
 
@@ -357,7 +397,8 @@ def resend_verification(data: ResendVerificationRequest) -> dict:
 
 @router.post("/verification-status")
 def verification_status(data: ResendVerificationRequest) -> dict:
-    profile = auth_db.get_profile_by_email(str(data.email))
+    email = str(data.email).strip().lower()
+    profile = auth_db.get_profile_by_email(email)
     if not profile:
         return {"account_exists": False, "verified": False}
 
@@ -366,9 +407,11 @@ def verification_status(data: ResendVerificationRequest) -> dict:
     except SupabaseAuthError:
         return {"account_exists": True, "verified": False, "email": profile["email"]}
 
+    supabase_user = get_user_by_email(email)
+    verified = bool(supabase_user and is_email_verified(supabase_user))
     return {
         "account_exists": True,
-        "verified": False,
+        "verified": verified,
         "email": profile["email"],
     }
 
@@ -377,7 +420,7 @@ def verification_status(data: ResendVerificationRequest) -> dict:
 def forgot_password(data: ForgotPasswordRequest) -> dict:
     try:
         require_supabase()
-        reset_password_for_email(str(data.email), redirect_to=email_redirect("/reset-password"))
+        reset_password_for_email(str(data.email), redirect_to=email_redirect("reset-password.html"))
     except SupabaseAuthError as exc:
         _raise_supabase_error(exc)
 

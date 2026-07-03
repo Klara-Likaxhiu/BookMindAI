@@ -252,8 +252,50 @@ def _username_from_email(email: str) -> str:
 
 
 def email_redirect(path: str) -> str:
+    """Build absolute redirect URL for Supabase auth emails."""
     base = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-    return f"{base}/{path.lstrip('/')}"
+    path = path.lstrip("/")
+    # Supabase must redirect to the exact page that handles the callback.
+    html_routes = {
+        "verify-email": "verify-email.html",
+        "reset-password": "reset-password.html",
+    }
+    if path in html_routes:
+        path = html_routes[path]
+    elif not path.endswith(".html") and not path.startswith("http"):
+        path = f"{path}.html" if "." not in path.split("/")[-1] else path
+    return f"{base}/{path}"
+
+
+def get_user_by_email(email: str) -> dict[str, Any] | None:
+    """Look up an auth user by email (service role). Used for verification status."""
+    service_key = supabase_service_role_key()
+    if not service_key:
+        return None
+
+    try:
+        payload = _request(
+            "GET",
+            "/admin/users",
+            params={"page": "1", "per_page": "50"},
+            api_key=service_key,
+        )
+    except SupabaseAuthError:
+        return None
+
+    users = payload.get("users") if isinstance(payload, dict) else None
+    if not isinstance(users, list):
+        return None
+
+    needle = email.strip().lower()
+    for user in users:
+        if (user.get("email") or "").lower() == needle:
+            return user
+    return None
+
+
+def is_email_verified(user: dict[str, Any]) -> bool:
+    return bool(user.get("email_confirmed_at") or user.get("confirmed_at"))
 
 
 def email_verification_enabled() -> bool:

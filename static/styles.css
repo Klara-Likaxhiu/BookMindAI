@@ -663,6 +663,11 @@ button, .btn {
   height: 28px;
 }
 
+.auth-status-icon-success {
+  background: #e8f7ee;
+  color: #1f6b43;
+}
+
 .small-muted {
   color: var(--muted);
   font-size: 0.92rem;

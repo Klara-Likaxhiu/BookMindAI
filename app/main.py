@@ -45,7 +45,9 @@ FRONTEND_PAGES: dict[str, str] = {
     "/challenges": "challenges.html",
     "/forgot-password": "forgot-password.html",
     "/reset-password": "reset-password.html",
+    "/reset-password.html": "reset-password.html",
     "/verify-email": "verify-email.html",
+    "/verify-email.html": "verify-email.html",
     "/verify-email-pending": "verify-email-pending.html",
 }
 

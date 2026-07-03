@@ -10,7 +10,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: APP_BASE_URL
-        sync: false
+        value: https://bookmindai-0a6u.onrender.com
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

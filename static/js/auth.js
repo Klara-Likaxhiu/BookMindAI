@@ -162,7 +162,7 @@ const BookMindAuth = {
 
   async signup(username, email, password) {
     const data = await this.api("/api/auth/signup", { username, email, password });
-    if (data.access_token) {
+    if (data.access_token && !data.verification_required) {
       this.saveSession(data);
     }
     return data;
@@ -180,10 +180,85 @@ const BookMindAuth = {
     return data;
   },
 
-  async verifyEmail(token, type = "signup") {
-    const data = await this.api("/api/auth/verify-email", { token, type });
-    this.saveSession(data);
+  async verifyEmail(payload, type = "signup") {
+    const body =
+      typeof payload === "string"
+        ? { token: payload, type }
+        : { ...payload, type: payload.type || type };
+
+    const data = await this.api("/api/auth/verify-email", body);
     return data;
+  },
+
+  /** Read Supabase auth params from query string and URL hash. */
+  parseAuthParams() {
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+
+    const get = key => search.get(key) || hash.get(key);
+
+    return {
+      token_hash: get("token_hash") || get("token"),
+      type: get("type") || "signup",
+      access_token: get("access_token"),
+      refresh_token: get("refresh_token"),
+      error: get("error") || get("error_description"),
+      error_code: get("error_code"),
+    };
+  },
+
+  /** Send misrouted Supabase callbacks (e.g. landing `/`) to the handler page. */
+  redirectAuthCallbackIfNeeded() {
+    const params = this.parseAuthParams();
+    if (!params.token_hash && !params.access_token && !params.error) {
+      return false;
+    }
+
+    const page = this.currentPage();
+    const type = (params.type || "signup").toLowerCase();
+    const isRecovery = type === "recovery" || type === "invite";
+    const targetPage = isRecovery ? "reset-password.html" : "verify-email.html";
+
+    if (page === targetPage) {
+      return false;
+    }
+
+    const suffix = `${window.location.search}${window.location.hash}`;
+    window.location.replace(`/${targetPage}${suffix}`);
+    return true;
+  },
+
+  async completeEmailVerification() {
+    const params = this.parseAuthParams();
+
+    if (params.error) {
+      throw new Error(params.error || "Verification link is invalid or expired.");
+    }
+
+    if (params.access_token) {
+      return this.verifyEmail({
+        access_token: params.access_token,
+        refresh_token: params.refresh_token,
+        type: params.type || "signup",
+      });
+    }
+
+    if (!params.token_hash) {
+      throw new Error("This verification link is missing a token.");
+    }
+
+    return this.verifyEmail({
+      token: params.token_hash,
+      token_hash: params.token_hash,
+      type: params.type || "signup",
+    });
+  },
+
+  redirectAfterVerification(user) {
+    this.clearSession();
+    const email = user?.email ? encodeURIComponent(user.email) : "";
+    const query = email ? `?verified=1&email=${email}` : "?verified=1";
+    window.location.href = `/login${query}`;
   },
 
   async resendVerification(email) {
@@ -466,7 +541,9 @@ const BookMindAuth = {
     "/challenges": "challenges.html",
     "/forgot-password": "forgot-password.html",
     "/reset-password": "reset-password.html",
+    "/reset-password.html": "reset-password.html",
     "/verify-email": "verify-email.html",
+    "/verify-email.html": "verify-email.html",
     "/verify-email-pending": "verify-email-pending.html"
   },
 
@@ -511,6 +588,13 @@ const BookMindAuth = {
       return;
     }
 
+    if (page === "login.html") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("verified") === "1") {
+        return;
+      }
+    }
+
     const ok = await this.verifySession();
     if (ok) {
       window.location.replace("/home");
@@ -522,6 +606,10 @@ const BookMindAuth = {
 };
 
 (function initAuth() {
+  if (BookMindAuth.redirectAuthCallbackIfNeeded()) {
+    return;
+  }
+
   const page = BookMindAuth.currentPage();
 
   if (BookMindAuth.EMAIL_FEATURE_PAGES.has(page)) {
