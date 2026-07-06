@@ -2470,37 +2470,128 @@ html[data-reading-font="large"] { font-size: 18px; }
 html[data-reading-font="xlarge"] { font-size: 20px; }
 
 html.theme-dark {
-  --bg: #1a2228;
-  --card: #242d35;
-  --border: #3a4650;
-  --text: #E8EDEA;
-  --ink: #E8EDEA;
-  --muted: #9AABA3;
-  --primary-soft: #2d3d36;
-  --primary-softer: #243029;
-  --cream: #242d35;
-  --soft-card: #242d35;
-  --surface: #1a2228;
-  --sage-light: #2d3d36;
+  /* Relaxing dusk palette — warm charcoal, soft moonlight text */
+  --ivory: #1A1F24;
+  --off-white: #212830;
+  --white: #2A3139;
+  --surface: #181C21;
+  --background: #242B33;
+  --sidebar-bg: #1F252C;
+  --card: #2A3139;
+  --bg: #181C21;
+
+  --border-neutral: #3A4452;
+  --border: #384150;
+
+  --navy: #D8E0E8;
+  --charcoal: #C5CDD6;
+  --text: #C8D0D9;
+  --ink: #E2E8EF;
+  --muted: #8B96A3;
+  --text-secondary: #9AA5B1;
+
+  /* Muted sage — gentle, not bright */
+  --forest: #4F7262;
+  --forest-hover: #426055;
+  --progress-green: #5E8A74;
+  --success: #6B9A82;
+  --success-soft: #263229;
+
+  /* Desaturated section washes */
+  --beige: #2C2A26;
+  --sky: #232B34;
+  --coral: #2E2828;
+  --lavender: #282633;
+  --butter: #2A2924;
+  --sage-section: #252D28;
+
+  --primary: var(--forest);
+  --primary-strong: var(--forest-hover);
+  --primary-light: var(--progress-green);
+  --primary-soft: #2A332E;
+  --primary-softer: #1E2429;
+  --sage-light: #2A332E;
+
+  --accent: #B8A67A;
+  --blue: #6B8A9E;
+  --red: #B87F76;
+  --red-soft: #3A2E2C;
+  --green: var(--forest);
+  --green-soft: var(--success-soft);
+  --gold: var(--accent);
+
+  --cream: #1A1F24;
+  --lilac: var(--lavender);
+  --teal: var(--navy);
+  --yellow: var(--butter);
+  --muskmelon: var(--coral);
+  --mandarin: var(--accent);
+  --amaranth: var(--navy);
+  --pink: var(--coral);
+  --orchid: var(--lavender);
+  --sienna: var(--accent);
+  --dark: var(--navy);
+  --soft-card: #2A3139;
+
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.32);
+
+  color-scheme: dark;
+}
+
+html.theme-dark body {
+  background: var(--surface);
+  color: var(--text);
 }
 
 html.theme-dark .sidebar {
-  background: #1e262c;
-  border-color: var(--border);
+  background: var(--sidebar-bg);
+  border-color: var(--border-neutral);
+  box-shadow: var(--shadow-sm);
+}
+
+html.theme-dark .sidebar a:hover {
+  background: #2A323C;
+  color: var(--ink);
+}
+
+html.theme-dark .sidebar a.active {
+  background: #2E353F;
+  color: var(--ink);
 }
 
 html.theme-dark .btn-secondary {
-  background: #2a2430;
-  color: #f4efe8;
-  border-color: var(--border);
+  background: #2A3139;
+  color: var(--ink);
+  border-color: var(--border-neutral);
+}
+
+html.theme-dark .btn-secondary:hover {
+  background: #323B45;
+  border-color: #4A5563;
+}
+
+html.theme-dark .btn-primary {
+  background: var(--forest);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+html.theme-dark .card {
+  background: var(--card);
+  border-color: var(--border-neutral);
+  box-shadow: var(--shadow-sm);
 }
 
 html.theme-dark .settings-input,
 html.theme-dark .profile-card input[type="text"],
-html.theme-dark .profile-card textarea {
-  background: #2a2430;
+html.theme-dark .profile-card textarea,
+html.theme-dark .bd-input,
+html.theme-dark .bd-select,
+html.theme-dark .bd-textarea {
+  background: #222930;
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--border-neutral);
 }
 
 /* =========================
@@ -2809,8 +2900,166 @@ html.theme-dark .profile-card textarea {
 }
 
 html.theme-dark .settings-danger-text {
-  color: #f0a59a;
+  color: #D4A59E;
 }
+
+/* ==========================================================================
+   Dark mode — relaxing editorial overrides
+   ========================================================================== */
+
+html.theme-dark .app-layout {
+  background: var(--surface);
+}
+
+html.theme-dark .dna-progress-card,
+html.theme-dark .reader-profile {
+  background: var(--beige);
+  border-color: #3D3A35;
+}
+
+html.theme-dark .stats-card {
+  background: var(--butter);
+  border-color: #3A3832;
+}
+
+html.theme-dark .highlight-card {
+  background: var(--lavender);
+  border-color: #3A3848;
+}
+
+html.theme-dark .journey-insight {
+  background: var(--sky);
+  border-color: #33404D;
+}
+
+html.theme-dark .mood-card {
+  background: var(--card);
+  border-color: var(--border-neutral);
+}
+
+html.theme-dark .mood-options button:hover,
+html.theme-dark .goal-options button:hover,
+html.theme-dark .active-mood {
+  background: var(--lavender) !important;
+  border-color: #3A3848 !important;
+  color: var(--ink) !important;
+}
+
+html.theme-dark .community-card {
+  background: var(--card);
+  border-color: #403530;
+}
+
+html.theme-dark .community-card-cover {
+  background: var(--coral);
+}
+
+html.theme-dark .chat-shell {
+  background: var(--lavender);
+  border-color: #3A3848;
+}
+
+html.theme-dark .goal-card,
+html.theme-dark .progress-cards .card {
+  background: var(--sage-section);
+  border-color: #334038;
+}
+
+html.theme-dark .library-tabs.card {
+  background: var(--sky);
+  border-color: #33404D;
+}
+
+html.theme-dark .library-summary-grid .stats-card:first-child {
+  background: var(--sky);
+  border-color: #33404D;
+}
+
+html.theme-dark .library-summary-grid .stats-card:nth-child(2) {
+  background: var(--lavender);
+  border-color: #3A3848;
+}
+
+html.theme-dark .library-summary-grid .stats-card:nth-child(3) {
+  background: var(--butter);
+  border-color: #3A3832;
+}
+
+html.theme-dark .library-tab[data-shelf="reading"].active-tab {
+  background: #334A5C !important;
+  color: var(--ink) !important;
+  border-color: #3E5568 !important;
+}
+
+html.theme-dark .library-tab.active-tab {
+  background: #3A4450 !important;
+  color: var(--ink) !important;
+}
+
+html.theme-dark .mini-btn {
+  background: #2A3139;
+  color: var(--ink);
+  border-color: var(--border-neutral);
+}
+
+html.theme-dark .mini-btn:hover {
+  background: #323B45;
+}
+
+html.theme-dark .book-meta span {
+  background: #2E353F;
+  color: var(--text);
+}
+
+html.theme-dark .stats-row div {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+html.theme-dark .fallback-cover,
+html.theme-dark .bd-cover-fallback,
+html.theme-dark .recommendation-cover.fallback-cover {
+  background: linear-gradient(145deg, #2A3139, #232930);
+}
+
+html.theme-dark .library-progress-track,
+html.theme-dark .bd-progress-track,
+html.theme-dark .progress-bar,
+html.theme-dark .path-progress,
+html.theme-dark .dna-progress-bar,
+html.theme-dark .challenge-bar {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+html.theme-dark .path-book.done {
+  background: var(--sky);
+}
+
+html.theme-dark .landing-page {
+  background:
+    radial-gradient(circle at top left, rgba(40, 48, 58, 0.5), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(35, 45, 58, 0.45), transparent 38%),
+    linear-gradient(160deg, #181C21, #1E2329);
+}
+
+html.theme-dark .settings-nav-link:hover,
+html.theme-dark .settings-nav-link.active {
+  background: #2E353F;
+  color: var(--ink);
+}
+
+html.theme-dark .settings-modal-backdrop {
+  background: rgba(10, 12, 15, 0.72);
+}
+
+html.theme-dark input:focus,
+html.theme-dark textarea:focus,
+html.theme-dark select:focus,
+html.theme-dark .bd-select:focus,
+html.theme-dark .bd-input:focus {
+  border-color: #5A6A7A !important;
+  box-shadow: 0 0 0 3px rgba(90, 106, 122, 0.2) !important;
+}
+
 
 .settings-modal {
   position: fixed;
