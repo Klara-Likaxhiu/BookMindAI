@@ -1,13 +1,14 @@
 /** Centralized book cover rendering, lookup, and caching for BookMindAI. */
 const BookMindCoverImage = {
   _memoryCache: new Map(),
-  _failedKeys: new Set(),
+  _failedUntil: new Map(),
   _pending: new Map(),
   _batchQueue: new Map(),
   _batchTimer: null,
-  _observer: null,
-  _storageKey: "bookmind_cover_cache_v2",
-  _failedStorageKey: "bookmind_cover_failed_v2",
+  _imageObserver: null,
+  _storageKey: "bookmind_cover_cache_v3",
+  _failedStorageKey: "bookmind_cover_failed_v3",
+  _failedTtlMs: 5 * 60 * 1000,
 
   _loadCaches() {
     if (this._cachesLoaded) return;
@@ -26,7 +27,13 @@ const BookMindCoverImage = {
         localStorage.getItem(this._failedStorageKey) || sessionStorage.getItem(this._failedStorageKey);
       if (failedRaw) {
         const failed = JSON.parse(failedRaw);
-        if (Array.isArray(failed)) failed.forEach(key => this._failedKeys.add(key));
+        if (failed && typeof failed === "object") {
+          Object.entries(failed).forEach(([key, until]) => {
+            if (typeof until === "number" && until > Date.now()) {
+              this._failedUntil.set(key, until);
+            }
+          });
+        }
       }
     } catch {
       /* ignore */
@@ -38,12 +45,24 @@ const BookMindCoverImage = {
       const payload = JSON.stringify(Object.fromEntries(this._memoryCache));
       localStorage.setItem(this._storageKey, payload);
       sessionStorage.setItem(this._storageKey, payload);
-      const failedPayload = JSON.stringify([...this._failedKeys]);
+      const failedPayload = JSON.stringify(Object.fromEntries(this._failedUntil));
       localStorage.setItem(this._failedStorageKey, failedPayload);
       sessionStorage.setItem(this._failedStorageKey, failedPayload);
     } catch {
       /* quota */
     }
+  },
+
+  _isFailed(key) {
+    this._loadCaches();
+    const until = this._failedUntil.get(key);
+    if (!until) return false;
+    if (until <= Date.now()) {
+      this._failedUntil.delete(key);
+      this._persistCaches();
+      return false;
+    }
+    return true;
   },
 
   bookRef(book) {
@@ -112,22 +131,22 @@ const BookMindCoverImage = {
     });
   },
 
-  getCachedUrl(ref) {
+  /** URL known for this book — from payload or local cache (not blocked by soft-fail). */
+  getKnownUrl(ref) {
     this._loadCaches();
     const key = this.cacheKey(ref);
-    if (this._failedKeys.has(key)) return null;
     return this.normalizeUrl(ref.cover_url) || this._memoryCache.get(key) || null;
   },
 
   _rememberSuccess(key, url) {
     if (!url) return;
     this._memoryCache.set(key, url);
-    this._failedKeys.delete(key);
+    this._failedUntil.delete(key);
     this._persistCaches();
   },
 
   _rememberFailure(key) {
-    this._failedKeys.add(key);
+    this._failedUntil.set(key, Date.now() + this._failedTtlMs);
     this._memoryCache.delete(key);
     this._persistCaches();
   },
@@ -152,7 +171,7 @@ const BookMindCoverImage = {
     const wrapClass = options.wrapClass || "book-cover-wrap";
     const imgClass = options.imgClass || "book-cover-img";
     const key = this.cacheKey(ref);
-    const cachedUrl = this.getCachedUrl(ref);
+    const knownUrl = this.getKnownUrl(ref);
     return `<div class="${wrapClass} book-cover-wrap"
       data-cover-key="${this.escape(key)}"
       data-title="${this.escape(ref.title)}"
@@ -160,18 +179,19 @@ const BookMindCoverImage = {
       data-genre="${this.escape(ref.genre || "Book")}"
       data-isbn="${this.escape(ref.isbn || "")}"
       data-img-class="${this.escape(imgClass)}"
-      ${cachedUrl ? `data-cover-url="${this.escape(cachedUrl)}" data-cover-resolved="true"` : ""}>${inner}</div>`;
+      ${knownUrl ? `data-cover-url="${this.escape(knownUrl)}"` : ""}>${inner}</div>`;
   },
 
   html(book, options = {}) {
     const ref = this.bookRef(book);
     const imgClass = options.imgClass || "book-cover-img";
-    const cachedUrl = this.getCachedUrl(ref);
+    const knownUrl = this.getKnownUrl(ref);
 
-    if (cachedUrl) {
+    if (knownUrl) {
+      this._rememberSuccess(this.cacheKey(ref), knownUrl);
       return this.wrapHtml(
-        `<img class="${imgClass}" data-cover-src="${this.escape(cachedUrl)}" alt="${this.escape(ref.title)} cover" loading="lazy" decoding="async">`,
-        { ...ref, cover_url: cachedUrl },
+        `<img class="${imgClass}" data-cover-src="${this.escape(knownUrl)}" alt="${this.escape(ref.title)} cover" loading="lazy" decoding="async">`,
+        { ...ref, cover_url: knownUrl },
         options
       );
     }
@@ -248,23 +268,22 @@ const BookMindCoverImage = {
     this._lazyLoadImage(img);
   },
 
-  showPlaceholder(wrap, ref) {
-    if (!wrap || wrap.querySelector(".premium-book-placeholder")) return;
-    wrap.innerHTML = "";
-    wrap.insertAdjacentHTML("beforeend", this.placeholderHtml(ref));
-    wrap.dataset.coverResolved = "failed";
+  hasPlaceholder(wrap) {
+    return Boolean(wrap?.querySelector(".premium-book-placeholder"));
   },
 
-  needsLookup(wrap) {
+  needsResolve(wrap) {
     if (!wrap) return false;
     if (wrap.dataset.coverResolved === "true") return false;
-    if (wrap.dataset.coverResolved === "failed") return false;
+    if (!this.hasPlaceholder(wrap)) return false;
+    const key = this.cacheKey(this.refFromWrap(wrap));
+    return !this._isFailed(key);
+  },
 
-    const ref = this.refFromWrap(wrap);
-    const key = this.cacheKey(ref);
-    if (this._failedKeys.has(key)) return false;
-    if (this.getCachedUrl(ref)) return false;
-    return Boolean(wrap.querySelector(".premium-book-placeholder"));
+  _isInViewport(el) {
+    if (!el || typeof el.getBoundingClientRect !== "function") return true;
+    const rect = el.getBoundingClientRect();
+    return rect.bottom >= -160 && rect.top <= window.innerHeight + 160;
   },
 
   _batchResolveBooks(books) {
@@ -273,15 +292,19 @@ const BookMindCoverImage = {
     const refs = [];
 
     books.forEach(book => {
-      const ref = typeof book.title === "string" ? book : this.bookRef(book);
+      const ref = typeof book.title === "string" && !book.ai_recommendation ? book : this.bookRef(book);
       const key = this.cacheKey(ref);
-      if (this._failedKeys.has(key)) return;
-      const cached = this.getCachedUrl(ref);
-      if (cached) {
-        ref.cover_url = cached;
+
+      const known = this.getKnownUrl(ref);
+      if (known) {
+        ref.cover_url = known;
         return;
       }
+
+      if (this._isFailed(key)) return;
+      if (this._pending.has(key)) return;
       if (refs.some(item => this.cacheKey(item) === key)) return;
+
       missing.push({
         title: ref.title,
         author: ref.author,
@@ -299,6 +322,7 @@ const BookMindCoverImage = {
       .map(b => `${b.title}|${b.author}`)
       .sort()
       .join(";;");
+
     if (this._pending.has(signature)) return this._pending.get(signature);
 
     const promise = fetch("/api/books/resolve-covers", {
@@ -320,16 +344,15 @@ const BookMindCoverImage = {
             this._rememberFailure(key);
           }
         });
-        refs.forEach(ref => {
-          if (!ref.cover_url) this._rememberFailure(this.cacheKey(ref));
-        });
         return refs;
       })
       .catch(() => refs)
       .finally(() => {
         this._pending.delete(signature);
+        refs.forEach(ref => this._pending.delete(this.cacheKey(ref)));
       });
 
+    refs.forEach(ref => this._pending.set(this.cacheKey(ref), promise));
     this._pending.set(signature, promise);
     return promise;
   },
@@ -341,146 +364,121 @@ const BookMindCoverImage = {
     if (!wraps.length) return;
 
     const refs = wraps.map(wrap => this.refFromWrap(wrap));
-    this._batchResolveBooks(refs).then(() => {
-      wraps.forEach(wrap => {
-        if (!wrap.isConnected) return;
-        const ref = this.refFromWrap(wrap);
-        const url = this.getCachedUrl(ref);
-        const imgClass = wrap.dataset.imgClass || "book-cover-img";
-        if (url) {
-          this.applyUrlToWrap(wrap, ref, url, imgClass);
-        } else {
-          this.showPlaceholder(wrap, ref);
-        }
-        wrap.dataset.coverLoading = "false";
+    this._batchResolveBooks(refs)
+      .then(() => {
+        wraps.forEach(wrap => {
+          if (!wrap.isConnected) return;
+          const ref = this.refFromWrap(wrap);
+          const url = this.getKnownUrl(ref);
+          const imgClass = wrap.dataset.imgClass || "book-cover-img";
+          if (url) {
+            this.applyUrlToWrap(wrap, ref, url, imgClass);
+          } else {
+            wrap.dataset.coverResolved = "failed";
+          }
+          wrap.dataset.coverLoading = "false";
+        });
+      })
+      .catch(() => {
+        wraps.forEach(wrap => {
+          wrap.dataset.coverLoading = "false";
+        });
       });
-    });
   },
 
   _queueWrap(wrap) {
-    if (!wrap || !this.needsLookup(wrap)) return;
+    if (!wrap || !this.needsResolve(wrap)) return;
     if (wrap.dataset.coverLoading === "true") return;
 
     const ref = this.refFromWrap(wrap);
-    const cached = this.getCachedUrl(ref);
-    if (cached) {
-      this.applyUrlToWrap(wrap, ref, cached, wrap.dataset.imgClass || "book-cover-img");
+    const known = this.getKnownUrl(ref);
+    if (known) {
+      this.applyUrlToWrap(wrap, ref, known, wrap.dataset.imgClass || "book-cover-img");
       return;
     }
 
-    wrap.dataset.coverLoading = "true";
-    this._batchQueue.set(this.cacheKey(ref), wrap);
-    clearTimeout(this._batchTimer);
-    this._batchTimer = setTimeout(() => this._flushBatchQueue(), 40);
-  },
+    const key = this.cacheKey(ref);
+    if (this._isFailed(key)) return;
 
-  _ensureCoverObserver() {
-    if (this._observer || typeof IntersectionObserver === "undefined") return;
-    this._observer = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => {
-          if (!entry.isIntersecting) return;
-          this._observer.unobserve(entry.target);
-          this._queueWrap(entry.target);
-        });
-      },
-      { rootMargin: "160px 0px", threshold: 0.01 }
-    );
+    wrap.dataset.coverLoading = "true";
+    this._batchQueue.set(key, wrap);
+    clearTimeout(this._batchTimer);
+    this._batchTimer = setTimeout(() => this._flushBatchQueue(), 50);
   },
 
   hydrateLazy(root = document, options = {}) {
     this._loadCaches();
-    this._ensureCoverObserver();
 
-    root.querySelectorAll("[data-cover-key]").forEach(wrap => {
+    const wraps = root.querySelectorAll("[data-cover-key]");
+    const visible = [];
+    const hidden = [];
+
+    wraps.forEach(wrap => {
       const ref = this.refFromWrap(wrap);
       this.attachRefToWrap(wrap, ref, options);
 
-      const cached = this.getCachedUrl(ref);
-      if (cached && this.needsLookup(wrap)) {
-        this.applyUrlToWrap(wrap, ref, cached, options.imgClass || wrap.dataset.imgClass || "book-cover-img");
+      const known = this.getKnownUrl(ref);
+
+      if (known && this.hasPlaceholder(wrap)) {
+        this.applyUrlToWrap(wrap, ref, known, options.imgClass || wrap.dataset.imgClass || "book-cover-img");
         return;
       }
 
       const img = wrap.querySelector("img[data-cover-src]");
       if (img) this._lazyLoadImage(img);
 
-      if (!this.needsLookup(wrap)) return;
+      if (!this.needsResolve(wrap)) return;
 
-      if (this._observer) {
-        this._observer.observe(wrap);
+      if (this._isInViewport(wrap)) {
+        visible.push(wrap);
       } else {
-        this._queueWrap(wrap);
+        hidden.push(wrap);
       }
     });
+
+    visible.forEach(wrap => this._queueWrap(wrap));
+
+    if (hidden.length) {
+      setTimeout(() => {
+        hidden.forEach(wrap => {
+          if (wrap.isConnected) this._queueWrap(wrap);
+        });
+      }, 400);
+    }
   },
 
   async hydrate(root = document, options = {}) {
-    if (options.lazy !== false) {
-      this.hydrateLazy(root, options);
-      return;
-    }
-
-    this._loadCaches();
-    const wraps = [...root.querySelectorAll("[data-cover-key]")].filter(w => this.needsLookup(w));
-    if (!wraps.length) return;
-
-    const refs = wraps.map(wrap => {
-      const ref = this.refFromWrap(wrap);
-      this.attachRefToWrap(wrap, ref, options);
-      return ref;
-    });
-
-    await this._batchResolveBooks(refs);
-    wraps.forEach(wrap => {
-      const ref = this.refFromWrap(wrap);
-      const url = this.getCachedUrl(ref);
-      const imgClass = options.imgClass || wrap.dataset.imgClass || "book-cover-img";
-      if (url) this.applyUrlToWrap(wrap, ref, url, imgClass);
-      else this.showPlaceholder(wrap, ref);
-    });
+    this.hydrateLazy(root, options);
   },
 
   async hydrateMany(books, root = document, options = {}) {
     this.seedFromBooks(books);
-
-    books.forEach((book, index) => {
-      const ref = this.bookRef(book);
-      const url = this.getCachedUrl(ref);
-      if (url) {
-        book.cover_url = url;
-        if (book.book_data) book.book_data.cover_url = url;
-      }
-    });
-
-    const needsApi = books.filter(book => !this.getCachedUrl(this.bookRef(book)));
-    if (needsApi.length) {
-      await this._batchResolveBooks(needsApi);
-      needsApi.forEach(book => {
-        const url = this.getCachedUrl(this.bookRef(book));
-        if (url) {
-          book.cover_url = url;
-          if (book.book_data) book.book_data.cover_url = url;
-        }
-      });
-    }
-
-    this.hydrateLazy(root, { ...options, lazy: true });
+    this.hydrateLazy(root, options);
     return books;
   },
 
-  /** @deprecated use hydrateLazy — kept for compatibility */
   async hydrateWrap(wrap, book, options = {}) {
     if (!wrap) return null;
     const ref = book ? this.bookRef(book) : this.refFromWrap(wrap);
     this.attachRefToWrap(wrap, ref, options);
-    const cached = this.getCachedUrl(ref);
-    if (cached) {
-      this.applyUrlToWrap(wrap, ref, cached, options.imgClass || wrap.dataset.imgClass || "book-cover-img");
-      return cached;
+
+    const known = this.getKnownUrl(ref);
+    if (known) {
+      this.applyUrlToWrap(wrap, ref, known, options.imgClass || wrap.dataset.imgClass || "book-cover-img");
+      return known;
     }
-    if (!this.needsLookup(wrap)) return null;
-    this._queueWrap(wrap);
+
+    if (!this.needsResolve(wrap)) return null;
+
+    wrap.dataset.coverLoading = "true";
+    await this._batchResolveBooks([ref]);
+    const url = this.getKnownUrl(ref);
+    wrap.dataset.coverLoading = "false";
+    if (url) {
+      this.applyUrlToWrap(wrap, ref, url, options.imgClass || wrap.dataset.imgClass || "book-cover-img");
+      return url;
+    }
+    wrap.dataset.coverResolved = "failed";
     return null;
   },
 };
