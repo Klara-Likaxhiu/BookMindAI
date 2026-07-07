@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.reader import (
     analyze_reader_profile,
     recommend_with_book_data,
     reading_companion,
     generate_reading_paths,
+    generate_genre_reading_path,
     generate_reader_intelligence,
 )
 
@@ -14,8 +15,16 @@ from app.reader_models import (
     ReadingPathsRequest,
     ReaderIntelligenceRequest,
     ReaderBadgesRequest,
+    GenrePathRequest,
 )
 from app.badge_service import generate_personalized_badges
+from app.reading_paths_store import (
+    ReadingPathsStoreError,
+    get_path_by_genre_slug,
+    normalize_genre_slug,
+    upsert_path,
+)
+from app.deps import get_verified_user
 
 router = APIRouter(prefix="/api/reader", tags=["Reader"])
 
@@ -75,3 +84,48 @@ def reader_badges(data: ReaderBadgesRequest) -> dict:
         reader_profile=data.reader_profile,
     )
     return {"badges": badges}
+
+
+@router.post("/genre-path")
+def reader_genre_path(
+    data: GenrePathRequest,
+    user: dict = Depends(get_verified_user),
+) -> dict:
+    genre = data.genre.strip()
+    slug = normalize_genre_slug(genre)
+
+    try:
+        existing = get_path_by_genre_slug(user["id"], slug)
+        if existing:
+            return {
+                "created": False,
+                "path_id": existing["id"],
+                "path": existing,
+                "message": f'Opened your existing "{existing.get("path_name") or genre} Starter Path".',
+            }
+
+        generated = generate_genre_reading_path(
+            genre=genre,
+            reader_profile=data.reader_profile,
+            library=data.library,
+            today_mood=data.today_mood,
+            today_goal=data.today_goal,
+        )
+        generated["genre_slug"] = slug
+        generated["genre"] = genre
+
+        saved = upsert_path(
+            user["id"],
+            generated,
+            genre_slug=slug,
+            genre_label=genre,
+        )
+    except ReadingPathsStoreError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return {
+        "created": True,
+        "path_id": saved["id"],
+        "path": saved,
+        "message": f'Created your "{saved.get("path_name") or genre} Starter Path".',
+    }

@@ -3,6 +3,8 @@ const pathsGrid = document.getElementById("pathsGrid");
 const pathsMessage = document.getElementById("pathsMessage");
 
 const STORE_KEY = "bookmind_reading_paths";
+let focusPathId = new URLSearchParams(window.location.search).get("path");
+let saveTimer = null;
 
 const ICONS = {
   route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
@@ -27,20 +29,9 @@ function escapeHtml(value) {
 }
 
 function uid() {
-  return Math.random().toString(36).slice(2, 10);
+  return crypto.randomUUID?.() || Math.random().toString(36).slice(2, 10);
 }
 
-function loadPaths() {
-  const raw = JSON.parse(localStorage.getItem(STORE_KEY));
-  return raw ? normalize(raw) : null;
-}
-
-function savePaths(result) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(result));
-}
-
-// Ensure every path/book has a stable id and a completion flag so we can track
-// progress across reloads even for AI output that lacks them.
 function normalize(result) {
   const paths = (result.paths || []).map(path => ({
     ...path,
@@ -48,13 +39,116 @@ function normalize(result) {
     books: (path.books || []).map(book => ({
       ...book,
       id: book.id || uid(),
-      completed: Boolean(book.completed)
-    }))
+      completed: Boolean(book.completed),
+    })),
   }));
   return { ...result, paths };
 }
 
-let state = loadPaths();
+function loadLocalPaths() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY));
+    return raw ? normalize(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalPaths(result) {
+  localStorage.setItem(STORE_KEY, JSON.stringify(result));
+}
+
+async function loadPathsFromServer() {
+  if (!window.BookMindAPI?.get) return null;
+
+  const token = await BookMindAPI.ensureAuth({ redirect: false });
+  if (!token) return loadLocalPaths();
+
+  try {
+    const data = await BookMindAPI.get("/api/reading-paths");
+    if (Array.isArray(data?.paths) && data.paths.length) {
+      return normalize(data);
+    }
+
+    const local = loadLocalPaths();
+    if (local?.paths?.length) {
+      await persistPaths(local, { immediate: true });
+      localStorage.removeItem(STORE_KEY);
+      return local;
+    }
+
+    return normalize(data || { message: "Your saved reading paths.", paths: [] });
+  } catch {
+    return loadLocalPaths();
+  }
+}
+
+async function persistPaths(result, { immediate = false } = {}) {
+  saveLocalPaths(result);
+
+  if (!window.BookMindAPI?.put) return;
+
+  const run = async () => {
+    try {
+      const token = await BookMindAPI.ensureAuth({ redirect: false });
+      if (!token) return;
+      const data = await BookMindAPI.put("/api/reading-paths", {
+        message: result.message,
+        paths: result.paths,
+      });
+      if (Array.isArray(data?.paths)) {
+        const savedByKey = new Map(
+          data.paths.map(path => [path.id || path.path_name, path])
+        );
+        const merged = result.paths.map(path => {
+          const saved = savedByKey.get(path.id) || savedByKey.get(path.path_name);
+          return saved ? { ...path, ...saved } : path;
+        });
+        data.paths.forEach(path => {
+          if (!merged.some(item => item.id === path.id)) {
+            merged.push(path);
+          }
+        });
+        state = normalize({ ...result, paths: merged });
+      }
+    } catch {
+      /* local cache remains as fallback */
+    }
+  };
+
+  if (immediate) {
+    await run();
+  } else {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(run, 400);
+  }
+}
+
+function savePaths(result) {
+  state = result;
+  void persistPaths(result);
+}
+
+let state = normalize({ message: "", paths: [] });
+
+function orderPaths(paths) {
+  const list = paths.slice();
+  if (!focusPathId) return list;
+
+  list.sort((a, b) => {
+    if (a.id === focusPathId) return -1;
+    if (b.id === focusPathId) return 1;
+    return 0;
+  });
+  return list;
+}
+
+function showPathFlash() {
+  const flash = sessionStorage.getItem("bookmind_path_flash");
+  if (!flash) return;
+  sessionStorage.removeItem("bookmind_path_flash");
+  showPathToast(flash);
+}
 
 void (async () => {
   if (window.BookMindAPI?.ensureAuth) {
@@ -64,10 +158,16 @@ void (async () => {
     }
   }
 
-  if (state) {
+  const loaded = await loadPathsFromServer();
+  if (loaded) {
+    state = loaded;
     renderPaths(state);
-    generateBtn.textContent = "Regenerate Paths";
+    if (state.paths?.length) {
+      generateBtn.textContent = "Regenerate Paths";
+    }
   }
+
+  showPathFlash();
 })();
 
 generateBtn.addEventListener("click", async () => {
@@ -91,11 +191,18 @@ generateBtn.addEventListener("click", async () => {
       reader_profile: readerProfile,
       library: library,
       today_mood: localStorage.getItem("bookmind_today_mood"),
-      today_goal: localStorage.getItem("bookmind_today_goal")
+      today_goal: localStorage.getItem("bookmind_today_goal"),
     });
 
     state = normalize(result);
-    savePaths(state);
+    const genrePaths = (await loadPathsFromServer())?.paths?.filter(p => p.genre_slug) || [];
+    if (genrePaths.length) {
+      const ids = new Set(state.paths.map(p => p.id));
+      genrePaths.forEach(path => {
+        if (!ids.has(path.id)) state.paths.push(path);
+      });
+    }
+    await persistPaths(state, { immediate: true });
     renderPaths(state);
   } catch (error) {
     pathsMessage.innerHTML = `
@@ -152,7 +259,7 @@ function toggleComplete(pathId, bookId) {
     const payload = {
       title: book.title,
       author: book.author || "",
-      genre: book.genre || "Book",
+      genre: book.genre || path.genre || "Book",
     };
 
     try {
@@ -207,8 +314,9 @@ function addBookToPath(pathId, title, author) {
     title: title.trim(),
     author: (author || "").trim(),
     level: "Added by you",
+    difficulty: "Custom",
     reason: "You added this book to the path.",
-    completed: false
+    completed: false,
   });
 
   savePaths(state);
@@ -239,7 +347,7 @@ function milestoneStrip(completed, total) {
   const milestones = [
     { label: "Started", reached: completed >= 1 },
     { label: "Halfway", reached: total > 0 && completed >= half },
-    { label: "Completed", reached: total > 0 && completed >= total }
+    { label: "Completed", reached: total > 0 && completed >= total },
   ];
 
   return `
@@ -259,14 +367,14 @@ function milestoneStrip(completed, total) {
 }
 
 function renderPaths(result) {
-  const paths = result.paths || [];
+  const paths = orderPaths(result.paths || []);
 
   pathsMessage.style.display = "block";
   pathsMessage.innerHTML = `<h2>${escapeHtml(result.message || "Here are your personalized reading paths.")}</h2>`;
 
   if (paths.length === 0) {
     pathsGrid.innerHTML = "";
-    pathsMessage.innerHTML += `<p>No paths yet — click "Generate My Journey" to create some.</p>`;
+    pathsMessage.innerHTML += `<p>No paths yet — click "Generate My Journey" or explore genres on Reader Journey.</p>`;
     return;
   }
 
@@ -279,13 +387,14 @@ function renderPaths(result) {
       const total = books.length;
       const percent = total ? Math.round((completed / total) * 100) : 0;
       const done = total > 0 && completed === total;
+      const isFocus = focusPathId && path.id === focusPathId;
 
       return `
-      <div class="path-card card" data-path="${path.id}">
+      <div class="path-card card ${isFocus ? "path-card-focus" : ""}" data-path="${path.id}">
         <div class="path-header">
           <div class="path-icon">${svg("route")}</div>
           <div>
-            <p class="eyebrow">Path ${pathIndex + 1}</p>
+            <p class="eyebrow">${path.genre ? escapeHtml(path.genre) : `Path ${pathIndex + 1}`}</p>
             <h2>${escapeHtml(path.path_name || "Personalized Reading Path")}</h2>
             <p>${escapeHtml(path.why_this_path || "A personalized path created from your Reader DNA.")}</p>
           </div>
@@ -316,7 +425,7 @@ function renderPaths(result) {
                 }
               </div>
               <div class="path-book-info">
-                <span>${escapeHtml(book.level || "Recommended")}</span>
+                <span>${escapeHtml(book.level || "Recommended")}${book.difficulty ? ` · ${escapeHtml(book.difficulty)}` : ""}</span>
                 <h3>${escapeHtml(book.title || "Untitled Book")}</h3>
                 <p>${escapeHtml(book.author || "Unknown Author")}</p>
                 <small>${escapeHtml(book.reason || "")}</small>
@@ -361,6 +470,11 @@ function renderPaths(result) {
     BookMindCoverImage.hydrateLazy(pathsGrid, {
       imgClass: "path-book-cover-img book-cover-img",
     });
+  }
+
+  const focusCard = pathsGrid.querySelector(".path-card-focus");
+  if (focusCard) {
+    focusCard.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 

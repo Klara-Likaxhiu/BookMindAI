@@ -1,4 +1,5 @@
 import json
+import re
 
 from app import ai
 from app.book_routes import search_open_library
@@ -336,6 +337,170 @@ Use this exact structure:
 
     parsed["engine"] = ai.engine_name()
 
+    return parsed
+
+
+_GENRE_STARTER_BOOKS: dict[str, list[dict[str, str]]] = {
+    "literary fiction": [
+        {"title": "Normal People", "author": "Sally Rooney", "level": "Beginner", "difficulty": "Accessible", "reason": "A contemporary entry point with emotional depth and clean prose."},
+        {"title": "The Remains of the Day", "author": "Kazuo Ishiguro", "level": "Intermediate", "difficulty": "Moderate", "reason": "Quiet, layered storytelling that rewards close reading."},
+        {"title": "A Little Life", "author": "Hanya Yanagihara", "level": "Advanced", "difficulty": "Demanding", "reason": "An intense character study for readers ready for emotional complexity."},
+        {"title": "Beloved", "author": "Toni Morrison", "level": "Advanced", "difficulty": "Challenging", "reason": "Lyrical, historical literary fiction with mythic resonance."},
+        {"title": "The Goldfinch", "author": "Donna Tartt", "level": "Intermediate", "difficulty": "Moderate", "reason": "Plot-driven literary fiction with rich atmosphere."},
+    ],
+    "contemporary fiction": [
+        {"title": "Tomorrow, and Tomorrow, and Tomorrow", "author": "Gabrielle Zevin", "level": "Beginner", "difficulty": "Accessible", "reason": "Warm, modern storytelling about friendship and creativity."},
+        {"title": "Such a Fun Age", "author": "Kiley Reid", "level": "Beginner", "difficulty": "Accessible", "reason": "Sharp social insight in an engaging contemporary voice."},
+        {"title": "Little Fires Everywhere", "author": "Celeste Ng", "level": "Intermediate", "difficulty": "Moderate", "reason": "Suburban drama with moral tension and strong characters."},
+        {"title": "The Seven Husbands of Evelyn Hugo", "author": "Taylor Jenkins Reid", "level": "Beginner", "difficulty": "Light", "reason": "A propulsive celebrity saga with heart."},
+        {"title": "Cloud Cuckoo Land", "author": "Anthony Doerr", "level": "Advanced", "difficulty": "Ambitious", "reason": "A sweeping, interconnected novel for adventurous readers."},
+    ],
+    "historical mystery": [
+        {"title": "The Alienist", "author": "Caleb Carr", "level": "Beginner", "difficulty": "Accessible", "reason": "Gilded Age mystery with vivid historical atmosphere."},
+        {"title": "The Name of the Rose", "author": "Umberto Eco", "level": "Advanced", "difficulty": "Challenging", "reason": "Medieval monastery mystery dense with ideas and symbols."},
+        {"title": "The Daughter of Time", "author": "Josephine Tey", "level": "Intermediate", "difficulty": "Moderate", "reason": "A classic historical investigation with a clever hook."},
+        {"title": "The Devotion of Suspect X", "author": "Keigo Higashino", "level": "Intermediate", "difficulty": "Moderate", "reason": "Elegant puzzle mystery with emotional stakes."},
+        {"title": "The Essex Serpent", "author": "Sarah Perry", "level": "Intermediate", "difficulty": "Moderate", "reason": "Victorian mystery threaded with folklore and science."},
+        {"title": "The Widow of Rose House", "author": "Diana Biller", "level": "Beginner", "difficulty": "Light", "reason": "Romantic historical mystery with charm and momentum."},
+    ],
+}
+
+
+def _genre_key(genre: str) -> str:
+    return re.sub(r"\s+", " ", (genre or "").strip().lower())
+
+
+def _offline_genre_path(genre: str, reader_profile: dict | None) -> dict:
+    key = _genre_key(genre)
+    books = _GENRE_STARTER_BOOKS.get(key)
+    if not books:
+        for catalog_key, catalog_books in _GENRE_STARTER_BOOKS.items():
+            if catalog_key in key or key in catalog_key:
+                books = catalog_books
+                break
+    if not books:
+        books = _GENRE_STARTER_BOOKS["literary fiction"]
+
+    reader_type = ""
+    if isinstance(reader_profile, dict):
+        reader_type = reader_profile.get("reader_type") or ""
+
+    why = (
+        f"This path introduces you to {genre} with books matched to your Reader DNA"
+        + (f" as a {reader_type}." if reader_type else ".")
+    )
+
+    return {
+        "path_name": f"{genre} Starter Path",
+        "path_icon": "🧭",
+        "why_this_path": why,
+        "difficulty_progression": "Beginner to Advanced",
+        "genre": genre,
+        "books": books[:7],
+    }
+
+
+def generate_genre_reading_path(
+    genre: str,
+    reader_profile: dict | None = None,
+    library: dict | None = None,
+    today_mood: str | None = None,
+    today_goal: str | None = None,
+) -> dict:
+    """Create a single genre-focused reading path with 5–7 books."""
+    excluded = _collect_excluded_titles(reader_profile, library)
+    reader_type = ""
+    favorite_genres: list[str] = []
+    if isinstance(reader_profile, dict):
+        reader_type = reader_profile.get("reader_type") or ""
+        favorite_genres = reader_profile.get("favorite_genres") or []
+
+    prompt = f"""
+You are BookMindAI, an AI librarian creating a personalized genre starter path.
+
+Target genre: {genre}
+
+Reader type: {reader_type}
+Favorite genres: {favorite_genres}
+Full Reader Context:
+{reader_profile}
+
+User Library:
+{library}
+
+Today's Mood: {today_mood}
+Today's Goal: {today_goal}
+
+Books to exclude:
+{sorted(excluded)}
+
+Rules:
+- Create ONE reading path focused on the genre "{genre}".
+- Path name must be exactly: "{genre} Starter Path"
+- Include 5 to 7 books ordered from beginner to advanced.
+- Each book needs: title, author, level (Beginner|Intermediate|Advanced), difficulty (Light|Accessible|Moderate|Demanding|Challenging), reason (1-2 sentences).
+- Explain in why_this_path why this genre fits the reader's Reader DNA.
+- Do NOT recommend excluded books or books already in the user's library.
+- Keep recommendations book-focused and practical.
+
+Respond ONLY in valid JSON:
+
+{{
+  "path_name": "{genre} Starter Path",
+  "path_icon": "emoji",
+  "why_this_path": "why this genre fits their Reader DNA",
+  "difficulty_progression": "Beginner to Advanced",
+  "genre": "{genre}",
+  "books": [
+    {{
+      "title": "string",
+      "author": "string",
+      "level": "Beginner",
+      "difficulty": "Accessible",
+      "reason": "short explanation"
+    }}
+  ]
+}}
+"""
+
+    parsed: dict
+    if ai.using_openai():
+        try:
+            result = ai._openai_chat_completion(
+                [
+                    {"role": "system", "content": "You are BookMindAI. Always return valid JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+            )
+            parsed = _safe_json_loads(result, _offline_genre_path(genre, reader_profile))
+        except Exception:
+            parsed = _offline_genre_path(genre, reader_profile)
+    else:
+        parsed = _offline_genre_path(genre, reader_profile)
+
+    if not isinstance(parsed, dict):
+        parsed = _offline_genre_path(genre, reader_profile)
+
+    parsed.setdefault("path_name", f"{genre} Starter Path")
+    parsed.setdefault("genre", genre)
+    parsed["books"] = _filter_books(parsed.get("books", []), excluded)
+
+    if len(parsed["books"]) < 5:
+        fallback = _offline_genre_path(genre, reader_profile)
+        seen = {_normalize_title(b.get("title")) for b in parsed["books"]}
+        for book in fallback.get("books", []):
+            title_key = _normalize_title(book.get("title"))
+            if title_key and title_key not in excluded and title_key not in seen:
+                parsed["books"].append(book)
+                seen.add(title_key)
+            if len(parsed["books"]) >= 7:
+                break
+
+    from app.cover_service import enrich_books_in_list
+
+    parsed["books"] = enrich_books_in_list(parsed.get("books", []))[:7]
+    parsed["engine"] = ai.engine_name()
     return parsed
 
 

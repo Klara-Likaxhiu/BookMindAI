@@ -3,10 +3,11 @@
 <head>
   <title>Reader Journey - BookMindAI</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="js/auth.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/library.js"></script>
-  <script src="js/user-data.js"></script>
+  <script src="js/auth.js" defer></script>
+  <script src="js/api.js" defer></script>
+  <script src="js/library.js" defer></script>
+  <script src="js/user-data.js" defer></script>
+  <script src="js/reader-journey.js" defer></script>
 </head>
 <body>
 
@@ -65,102 +66,14 @@
     <section class="card journey-insight">
       <p class="eyebrow">Next Growth Path</p>
       <h2>Genres you could explore next</h2>
+      <p class="growth-hint">Tap a genre to instantly build a personalized starter reading path.</p>
       <div id="growthList" class="growth-tags"></div>
+      <p id="growthNote" class="growth-note" hidden></p>
     </section>
 
   </main>
 
 </div>
-
-<script>
-  document.addEventListener("DOMContentLoaded", async () => {
-    if (window.BookMindUserData) await BookMindUserData.loadReaderProfile();
-    const profile = JSON.parse(localStorage.getItem("readerProfile") || "null");
-    const mood = localStorage.getItem("bookmind_today_mood");
-    const goal = localStorage.getItem("bookmind_today_goal");
-
-    if (profile) {
-      document.getElementById("journeyType").textContent = profile.reader_type || "Unknown Reader";
-      document.getElementById("journeyLevel").textContent =
-        `Reading level: ${profile.confirmed_reading_level || profile.reading_level || "Not available"}`;
-    }
-
-    document.getElementById("todayMode").textContent =
-      mood || goal ? `${mood || "any mood"} + ${goal || "any goal"}` : "No mode selected";
-
-    let allBooks = [];
-    try {
-      await BookMindLibrary.ensureLoaded();
-      allBooks = [
-        ...BookMindLibrary.getBooksByStatus("read"),
-        ...BookMindLibrary.getBooksByStatus("reading"),
-        ...BookMindLibrary.getBooksByStatus("want")
-      ];
-    } catch {
-      allBooks = [];
-    }
-
-  function findTopGenre(books) {
-    const counts = {};
-
-    books.forEach(book => {
-      const genre = book.genre || "Unknown";
-      counts[genre] = (counts[genre] || 0) + 1;
-    });
-
-    let top = null;
-    let max = 0;
-
-    Object.keys(counts).forEach(genre => {
-      if (counts[genre] > max) {
-        top = genre;
-        max = counts[genre];
-      }
-    });
-
-    return top;
-  }
-
-  const topGenre = findTopGenre(allBooks);
-  document.getElementById("topGenre").textContent = topGenre || "Not enough data";
-
-  const insightList = document.getElementById("insightList");
-  const favoriteGenres = profile?.favorite_genres || [];
-
-  const insights = [
-    profile?.reader_type ? `You are currently classified as a ${profile.reader_type}.` : null,
-    favoriteGenres.length ? `Your strongest genres are ${favoriteGenres.join(", ")}.` : null,
-    topGenre ? `Your library shows a strong interest in ${topGenre}.` : null,
-    mood ? `Today you are leaning toward a ${mood} reading mood.` : null,
-    goal ? `Your current reading goal is to ${goal}.` : null
-  ].filter(Boolean);
-
-  insightList.innerHTML = insights.length
-    ? insights.map(item => `<p><svg class="icon icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> ${item}</p>`).join("")
-    : `<p>Start saving books to build your Reader Journey.</p>`;
-
-  const growthSuggestions = [];
-
-  if (favoriteGenres.includes("Mystery") || favoriteGenres.includes("Thriller")) {
-    growthSuggestions.push("Dark Academia", "Crime Fiction", "Psychological Horror");
-  }
-
-  if (favoriteGenres.includes("Romance")) {
-    growthSuggestions.push("Literary Romance", "Historical Romance", "Romantic Comedy");
-  }
-
-  if (favoriteGenres.includes("Fantasy")) {
-    growthSuggestions.push("Urban Fantasy", "Magical Realism", "Mythological Fiction");
-  }
-
-  if (growthSuggestions.length === 0) {
-    growthSuggestions.push("Literary Fiction", "Contemporary Fiction", "Historical Mystery");
-  }
-
-  document.getElementById("growthList").innerHTML =
-    growthSuggestions.map(tag => `<span>${tag}</span>`).join("");
-  });
-</script>
 
 </body>
 </html>

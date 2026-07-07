@@ -48,3 +48,11 @@ class ReaderBadgesRequest(BaseModel):
     reader_profile: dict | None = None
     library: dict | None = None
     stats: dict | None = None
+
+
+class GenrePathRequest(BaseModel):
+    genre: str = Field(..., min_length=1, max_length=120)
+    reader_profile: dict | None = None
+    library: dict | None = None
+    today_mood: str | None = None
+    today_goal: str | None = None

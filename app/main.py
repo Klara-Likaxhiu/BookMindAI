@@ -21,6 +21,7 @@ from app.book_routes import router as book_router
 from app.review_routes import router as review_router
 from app.auth_routes import router as auth_router
 from app.library_routes import router as library_router
+from app.reading_paths_routes import router as reading_paths_router
 from app.user_routes import router as user_router
 from app.auth_db import init_db
 from app.extract import UnsupportedFileType, extract_text  # noqa: E402
@@ -78,6 +79,7 @@ app.include_router(reader_router)
 app.include_router(book_router)
 app.include_router(review_router)
 app.include_router(library_router)
+app.include_router(reading_paths_router)
 
 
 class AnalyzeRequest(BaseModel):
