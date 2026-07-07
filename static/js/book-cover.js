@@ -16,6 +16,29 @@ const BookMindCoverImage = {
     };
   },
 
+  refFromWrap(wrap) {
+    if (wrap.__bookRef) return { ...wrap.__bookRef };
+    return {
+      title: wrap.dataset.title || "Untitled Book",
+      author: wrap.dataset.author || "Unknown Author",
+      genre: wrap.dataset.genre || "Book",
+      isbn: wrap.dataset.isbn || null,
+      cover_url: wrap.querySelector("img")?.src || null,
+      google_id: wrap.dataset.googleId || null,
+      open_library_key: wrap.dataset.openLibraryKey || null,
+    };
+  },
+
+  attachRefToWrap(wrap, ref, options = {}) {
+    if (!wrap || !ref) return;
+    wrap.__bookRef = ref;
+    wrap.dataset.title = ref.title || "";
+    wrap.dataset.author = ref.author || "";
+    wrap.dataset.genre = ref.genre || "Book";
+    wrap.dataset.isbn = ref.isbn || "";
+    if (options.imgClass) wrap.dataset.imgClass = options.imgClass;
+  },
+
   cacheKey(ref) {
     const isbn = String(ref.isbn || "").replace(/[^0-9Xx]/g, "");
     if (isbn) return `isbn:${isbn.toLowerCase()}`;
@@ -33,6 +56,15 @@ const BookMindCoverImage = {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  },
+
+  logLookup(ref, data, url) {
+    console.log("[BookMindCover]", ref.title, "by", ref.author, "->", {
+      cover_url: url,
+      source: data?.source || data?.cover_source || null,
+      cached: data?.cached ?? false,
+      book_id: data?.book_id || data?.cache_key || null,
+    });
   },
 
   placeholderHtml(ref, options = {}) {
@@ -53,7 +85,14 @@ const BookMindCoverImage = {
 
   wrapHtml(inner, ref, options = {}) {
     const wrapClass = options.wrapClass || "book-cover-wrap";
-    return `<div class="${wrapClass}" data-cover-key="${this.escape(this.cacheKey(ref))}">${inner}</div>`;
+    const imgClass = options.imgClass || "book-cover-img";
+    return `<div class="${wrapClass} book-cover-wrap"
+      data-cover-key="${this.escape(this.cacheKey(ref))}"
+      data-title="${this.escape(ref.title)}"
+      data-author="${this.escape(ref.author)}"
+      data-genre="${this.escape(ref.genre || "Book")}"
+      data-isbn="${this.escape(ref.isbn || "")}"
+      data-img-class="${this.escape(imgClass)}">${inner}</div>`;
   },
 
   html(book, options = {}) {
@@ -80,13 +119,9 @@ const BookMindCoverImage = {
       return;
     }
 
-    const book = wrap.__bookRef || {
-      title: wrap.dataset.title || img.alt?.replace(/ cover$/, "") || "Book",
-      author: wrap.dataset.author || "Unknown Author",
-      genre: wrap.dataset.genre || "Book",
-      isbn: wrap.dataset.isbn || null,
-      cover_url: null,
-    };
+    const book = this.refFromWrap(wrap);
+    book.cover_url = null;
+    wrap.dataset.coverResolved = "false";
 
     if (wrap.dataset.coverRetry === "true") {
       img.remove();
@@ -98,10 +133,9 @@ const BookMindCoverImage = {
 
     wrap.dataset.coverRetry = "true";
     img.remove();
-    wrap.__bookRef = { ...book, cover_url: null };
     this._memoryCache.delete(this.cacheKey(book));
 
-    this.resolve({ ...book, cover_url: null }).then(url => {
+    this.resolve(book, { skipCache: true }).then(url => {
       if (url && wrap.isConnected) {
         const imgClass = img.className || wrap.dataset.imgClass || "book-cover-img";
         this.applyUrlToWrap(wrap, book, url, imgClass);
@@ -116,7 +150,10 @@ const BookMindCoverImage = {
 
   async resolve(ref, options = {}) {
     const key = this.cacheKey(ref);
-    if (!options.skipCache && this._memoryCache.has(key)) return this._memoryCache.get(key);
+    if (!options.skipCache && this._memoryCache.has(key)) {
+      const cached = this._memoryCache.get(key);
+      if (cached) return cached;
+    }
 
     const existing = this.normalizeUrl(ref.cover_url);
     if (existing && !options.skipCache) {
@@ -141,11 +178,13 @@ const BookMindCoverImage = {
       .then(response => (response.ok ? response.json() : {}))
       .then(data => {
         const url = this.normalizeUrl(data.cover_url) || null;
-        this._memoryCache.set(key, url);
+        this.logLookup(ref, data, url);
+        if (url) this._memoryCache.set(key, url);
         this._pending.delete(key);
         return url;
       })
-      .catch(() => {
+      .catch(err => {
+        console.warn("[BookMindCover] lookup failed", ref.title, err);
         this._pending.delete(key);
         return null;
       });
@@ -165,43 +204,54 @@ const BookMindCoverImage = {
     img.decoding = "async";
     img.onerror = () => BookMindCoverImage.onError(img);
     wrap.appendChild(img);
-    wrap.__bookRef = ref;
-    ref.cover_url = url;
+    this.attachRefToWrap(wrap, { ...ref, cover_url: url }, { imgClass });
+    wrap.dataset.coverResolved = "true";
+    wrap.classList.add("cover-loaded");
+  },
+
+  needsLookup(wrap) {
+    if (!wrap) return false;
+    const placeholder = wrap.querySelector(".premium-book-placeholder");
+    const img = wrap.querySelector("img");
+    if (placeholder) return true;
+    if (!img) return true;
+    if (wrap.dataset.coverResolved !== "true") return true;
+    return false;
   },
 
   async hydrateWrap(wrap, book, options = {}) {
-    if (!wrap || wrap.dataset.coverHydrated === "true") return;
-    const ref = this.bookRef(book);
-    wrap.__bookRef = ref;
+    if (!wrap) return null;
 
-    const imgClass = options.imgClass || wrap.dataset.imgClass || "book-cover-img";
-    const existing = wrap.querySelector("img");
-    const existingUrl = this.normalizeUrl(existing?.src || ref.cover_url);
+    const ref = book ? this.bookRef(book) : this.refFromWrap(wrap);
+    this.attachRefToWrap(wrap, ref, options);
 
-    if (existingUrl && existing) {
-      wrap.dataset.coverHydrated = "true";
-      return existingUrl;
+    if (!this.needsLookup(wrap) && wrap.querySelector("img")) {
+      return this.normalizeUrl(wrap.querySelector("img").src);
     }
 
-    const url = await this.resolve(ref);
-    if (url && wrap.isConnected) {
-      this.applyUrlToWrap(wrap, ref, url, imgClass);
+    if (wrap.dataset.coverLoading === "true") return null;
+    wrap.dataset.coverLoading = "true";
+
+    try {
+      const url = await this.resolve(ref, { skipCache: false });
+      if (url && wrap.isConnected) {
+        const imgClass = options.imgClass || wrap.dataset.imgClass || "book-cover-img";
+        this.applyUrlToWrap(wrap, ref, url, imgClass);
+        return url;
+      }
+    } finally {
+      wrap.dataset.coverLoading = "false";
     }
-    wrap.dataset.coverHydrated = "true";
-    return url;
+
+    return null;
   },
 
   hydrate(root = document, options = {}) {
     const wraps = root.querySelectorAll("[data-cover-key]");
     wraps.forEach(wrap => {
-      const book = wrap.__bookRef || {
-        title: wrap.dataset.title,
-        author: wrap.dataset.author,
-        genre: wrap.dataset.genre,
-        isbn: wrap.dataset.isbn,
-        cover_url: wrap.querySelector("img")?.src,
-      };
-      this.hydrateWrap(wrap, book, options);
+      if (this.needsLookup(wrap)) {
+        this.hydrateWrap(wrap, null, options);
+      }
     });
   },
 
@@ -230,14 +280,15 @@ const BookMindCoverImage = {
           const data = await response.json();
           (data.results || []).forEach((result, index) => {
             const url = this.normalizeUrl(result.cover_url);
+            this.logLookup(missing[index], result, url);
             if (url) {
               this._memoryCache.set(this.cacheKey(missing[index]), url);
               missing[index].cover_url = url;
             }
           });
         }
-      } catch {
-        /* offline */
+      } catch (err) {
+        console.warn("[BookMindCover] batch lookup failed", err);
       }
     }
 
@@ -247,7 +298,13 @@ const BookMindCoverImage = {
       if (book.book_data && ref.cover_url) book.book_data.cover_url = ref.cover_url;
     });
 
-    this.hydrate(root, options);
+    const wraps = root.querySelectorAll("[data-cover-key]");
+    wraps.forEach(wrap => {
+      if (this.needsLookup(wrap)) {
+        this.hydrateWrap(wrap, null, options);
+      }
+    });
+
     return books;
   },
 };

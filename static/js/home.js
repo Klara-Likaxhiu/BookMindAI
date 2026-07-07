@@ -268,6 +268,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       container.appendChild(card);
+
+      const coverWrap = card.querySelector("[data-cover-key]");
+      if (coverWrap && window.BookMindCoverImage) {
+        BookMindCoverImage.attachRefToWrap(coverWrap, { ...aiBook, ...bookData, genre }, {
+          imgClass: "recommendation-cover book-cover-img",
+        });
+      }
     });
 
     if (window.BookMindCoverImage) {

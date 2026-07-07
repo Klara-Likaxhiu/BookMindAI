@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from difflib import SequenceMatcher
 
 import httpx
 
 from app.cover_store import format_source, get_cached_cover, get_cached_cover_by_isbn, upsert_cover
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_cover_url(url: str | None) -> str | None:
@@ -51,6 +54,103 @@ def _similarity(a: str | None, b: str | None) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+
+_KNOWN_AUTHOR_ALIASES: dict[str, list[str]] = {
+    "v.e. schwab": ["VE Schwab", "Victoria Schwab", "V E Schwab", "Schwab"],
+    "v e schwab": ["VE Schwab", "Victoria Schwab", "V.E. Schwab", "Schwab"],
+    "ve schwab": ["Victoria Schwab", "V.E. Schwab", "V E Schwab", "Schwab"],
+}
+
+
+def _normalize_author_key(author: str) -> str:
+    return re.sub(r"\s+", " ", author.lower().strip())
+
+
+def _author_search_variants(author: str | None) -> list[str]:
+    """Generate author query variants (handles initials like V.E. Schwab)."""
+    if not author or not author.strip():
+        return []
+
+    base = author.strip()
+    variants: list[str] = [base]
+
+    no_dots = re.sub(r"\.+", " ", base)
+    no_dots = re.sub(r"\s+", " ", no_dots).strip()
+    if no_dots and no_dots not in variants:
+        variants.append(no_dots)
+
+    compact = re.sub(r"[\.\s]+", "", base)
+    if compact:
+        last = base.split()[-1] if base.split() else ""
+        if last and last.lower() != compact.lower():
+            spaced_compact = f"{compact[: len(compact) - len(last)]} {last}".strip()
+            spaced_compact = re.sub(r"\s+", " ", spaced_compact)
+            if spaced_compact and spaced_compact not in variants:
+                variants.append(spaced_compact)
+
+    if base.split():
+        last_name = base.split()[-1]
+        if last_name and last_name not in variants and len(last_name) > 2:
+            variants.append(last_name)
+
+    aliases = _KNOWN_AUTHOR_ALIASES.get(_normalize_author_key(base), [])
+    for alias in aliases:
+        if alias not in variants:
+            variants.append(alias)
+
+    return variants
+
+
+def _google_queries(title: str, author: str | None) -> list[str]:
+    """Build aggressive Google Books queries, quoted intitle/inauthor first."""
+    queries: list[str] = []
+    safe_title = title.replace('"', "")
+
+    for author_variant in _author_search_variants(author) or [None]:
+        if author_variant:
+            safe_author = author_variant.replace('"', "")
+            queries.append(f'intitle:"{safe_title}" inauthor:"{safe_author}"')
+            queries.append(f"intitle:{safe_title} inauthor:{safe_author}")
+            queries.append(f"{safe_title} {safe_author}")
+        else:
+            queries.append(f'intitle:"{safe_title}"')
+            queries.append(f"intitle:{safe_title}")
+            queries.append(safe_title)
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for query in queries:
+        if query not in seen:
+            seen.add(query)
+            unique.append(query)
+    return unique
+
+
+def _open_library_queries(title: str, author: str | None) -> list[str]:
+    """Build Open Library queries — title first, then title + author variants."""
+    queries: list[str] = [title, f"title:{title}"]
+
+    for author_variant in _author_search_variants(author):
+        queries.append(f"{title} {author_variant}")
+        queries.append(f"title:{title} author:{author_variant}")
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for query in queries:
+        if query not in seen:
+            seen.add(query)
+            unique.append(query)
+    return unique
+
+
+def _log_cover_result(title: str, author: str | None, result: dict) -> None:
+    message = (
+        f"[BookMindCover] {title!r} by {author or 'Unknown'} -> "
+        f"cover_url={result.get('cover_url')!r} source={result.get('source')} cached={result.get('cached')}"
+    )
+    logger.info(message)
+    print(message, flush=True)
 
 
 _JUNK_TITLE_RE = re.compile(
@@ -187,10 +287,7 @@ def _from_google(
             if url and _cover_url_is_usable(url):
                 return url, book
 
-    queries = [title]
-    if author:
-        queries.append(f"{title} {author}")
-        queries.append(f"intitle:{title} inauthor:{author.split()[-1]}")
+    queries = _google_queries(title, author)
 
     seen_ids: set[str] = set()
     candidates: list[tuple[float, dict]] = []
@@ -232,9 +329,7 @@ def _from_open_library(
             if url and _cover_url_is_usable(url):
                 return url, book
 
-    queries = [title, f"title:{title}"]
-    if author:
-        queries.append(f"{title} {author}")
+    queries = _open_library_queries(title, author)
 
     seen_keys: set[str] = set()
     candidates: list[tuple[float, dict]] = []
@@ -285,7 +380,9 @@ def resolve_cover(
     """Resolve a cover URL using cache → provided URL → Google → Open Library → ISBN."""
     title = (title or "").strip()
     if not title:
-        return {"cover_url": None, "cover_source": None, "cached": False, "cache_key": ""}
+        result = {"cover_url": None, "cover_source": None, "cached": False, "cache_key": ""}
+        _log_cover_result(title, author, result)
+        return result
 
     author = (author or "").strip() or None
     book_id = make_book_id(title, author, isbn)
@@ -294,7 +391,7 @@ def resolve_cover(
     if cached and cached.get("cover_url"):
         url = normalize_cover_url(cached["cover_url"])
         if url:
-            return {
+            result = {
                 "cover_url": url,
                 "cover_source": "cache",
                 "source": cached.get("source") or "Cache",
@@ -302,11 +399,13 @@ def resolve_cover(
                 "book_id": cached.get("book_id") or book_id,
                 "cache_key": cached.get("book_id") or book_id,
             }
+            _log_cover_result(title, author, result)
+            return result
 
     if cover_url:
         normalized = normalize_cover_url(cover_url)
         if normalized and _cover_url_is_usable(normalized):
-            return _cache_and_return(
+            result = _cache_and_return(
                 book_id=book_id,
                 title=title,
                 author=author,
@@ -314,13 +413,15 @@ def resolve_cover(
                 cover_url=normalized,
                 cover_source="provided",
             )
+            _log_cover_result(title, author, result)
+            return result
 
     google_url, google_book = _from_google(title, author, google_id)
     resolved_isbn = isbn or (google_book or {}).get("isbn")
     save_id = make_book_id(title, author, resolved_isbn)
 
     if google_url:
-        return _cache_and_return(
+        result = _cache_and_return(
             book_id=save_id,
             title=title,
             author=author,
@@ -328,13 +429,15 @@ def resolve_cover(
             cover_url=google_url,
             cover_source="google_books",
         )
+        _log_cover_result(title, author, result)
+        return result
 
     ol_url, ol_book = _from_open_library(title, author, open_library_key)
     resolved_isbn = resolved_isbn or (ol_book or {}).get("isbn")
     save_id = make_book_id(title, author, resolved_isbn)
 
     if ol_url:
-        return _cache_and_return(
+        result = _cache_and_return(
             book_id=save_id,
             title=title,
             author=author,
@@ -342,11 +445,13 @@ def resolve_cover(
             cover_url=ol_url,
             cover_source="open_library",
         )
+        _log_cover_result(title, author, result)
+        return result
 
     isbn_url = _from_isbn(resolved_isbn)
     if isbn_url:
         save_id = make_book_id(title, author, resolved_isbn)
-        return _cache_and_return(
+        result = _cache_and_return(
             book_id=save_id,
             title=title,
             author=author,
@@ -354,8 +459,10 @@ def resolve_cover(
             cover_url=isbn_url,
             cover_source="isbn",
         )
+        _log_cover_result(title, author, result)
+        return result
 
-    return {
+    result = {
         "cover_url": None,
         "cover_source": None,
         "source": None,
@@ -363,6 +470,8 @@ def resolve_cover(
         "book_id": book_id,
         "cache_key": book_id,
     }
+    _log_cover_result(title, author, result)
+    return result
 
 
 def resolve_covers_batch(books: list[dict]) -> list[dict]:
