@@ -3,8 +3,10 @@
 <head>
   <title>Settings - BookMindAI</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="js/auth-ui.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/genres.js"></script>
   <script src="js/settings.js" defer></script>
 </head>
 <body>
@@ -219,11 +221,29 @@
     <h3>Change Password</h3>
     <form id="passwordForm" class="settings-form">
       <label for="currentPassword">Current password</label>
-      <input type="password" id="currentPassword" class="settings-input" required autocomplete="current-password">
+      <div class="password-field">
+        <input type="password" id="currentPassword" class="settings-input" required autocomplete="current-password">
+        <button type="button" class="password-toggle" data-toggle-password="currentPassword" aria-label="Show password" aria-pressed="false">
+          <svg class="icon-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="icon-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+        </button>
+      </div>
       <label for="newPassword">New password</label>
-      <input type="password" id="newPassword" class="settings-input" required minlength="8" autocomplete="new-password">
+      <div class="password-field">
+        <input type="password" id="newPassword" class="settings-input" required minlength="8" autocomplete="new-password">
+        <button type="button" class="password-toggle" data-toggle-password="newPassword" aria-label="Show password" aria-pressed="false">
+          <svg class="icon-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="icon-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+        </button>
+      </div>
       <label for="confirmNewPassword">Confirm new password</label>
-      <input type="password" id="confirmNewPassword" class="settings-input" required minlength="8" autocomplete="new-password">
+      <div class="password-field">
+        <input type="password" id="confirmNewPassword" class="settings-input" required minlength="8" autocomplete="new-password">
+        <button type="button" class="password-toggle" data-toggle-password="confirmNewPassword" aria-label="Show password" aria-pressed="false">
+          <svg class="icon-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="icon-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+        </button>
+      </div>
       <button type="submit" class="btn btn-primary">Update Password</button>
     </form>
   </div>
@@ -237,7 +257,13 @@
     <p class="settings-danger-text">This permanently removes your account and cannot be undone. Your local reading library on this device will remain until you clear browser data.</p>
     <form id="deleteForm" class="settings-form">
       <label for="deletePassword">Password</label>
-      <input type="password" id="deletePassword" class="settings-input" autocomplete="current-password">
+      <div class="password-field">
+        <input type="password" id="deletePassword" class="settings-input" autocomplete="current-password">
+        <button type="button" class="password-toggle" data-toggle-password="deletePassword" aria-label="Show password" aria-pressed="false">
+          <svg class="icon-eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="icon-eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+        </button>
+      </div>
       <label for="deleteConfirmation">Type DELETE to confirm</label>
       <input type="text" id="deleteConfirmation" class="settings-input" placeholder="DELETE" required>
       <button type="submit" class="btn btn-danger">Delete My Account</button>

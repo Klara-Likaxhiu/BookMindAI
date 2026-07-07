@@ -564,11 +564,18 @@ button, .btn {
 
 .password-field {
   position: relative;
+  margin-bottom: 0;
 }
 
-.password-field input {
+.password-field input,
+.password-field .settings-input {
   width: 100%;
   padding-right: 52px;
+  box-sizing: border-box;
+}
+
+.settings-form .password-field {
+  margin-bottom: 4px;
 }
 
 .password-toggle {
@@ -584,6 +591,24 @@ button, .btn {
   display: grid;
   place-items: center;
   margin: 0;
+  border-radius: 8px;
+  line-height: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.password-toggle:hover {
+  color: var(--ink);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  color: var(--ink);
+}
+
+html.theme-dark .password-toggle:hover,
+html.theme-dark .password-toggle:focus-visible {
+  color: var(--text);
 }
 
 .password-toggle svg {
@@ -983,13 +1008,13 @@ html.auth-pending body {
   
   .quiz-header p {
     font-weight: 800;
-    color: var(--primary);
+    color: var(--forest);
   }
   
   .progress-bar {
     width: 100%;
     height: 12px;
-    background: rgba(90, 31, 70, 0.12);
+    background: rgba(47, 74, 58, 0.12);
     border-radius: 999px;
     overflow: hidden;
     margin-top: 10px;
@@ -998,7 +1023,7 @@ html.auth-pending body {
   #progressFill {
     height: 100%;
     width: 5%;
-    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    background: linear-gradient(90deg, var(--forest), var(--progress-green));
     border-radius: 999px;
     transition: 0.3s;
   }
@@ -3624,6 +3649,311 @@ body.settings-modal-open {
   color: var(--text-secondary);
   font-weight: 800;
   margin-bottom: 28px;
+}
+
+/* Reader DNA quiz — custom genre + completion summary */
+.quiz-custom-genre {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.quiz-custom-label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.quiz-custom-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.quiz-custom-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
+.quiz-custom-add {
+  white-space: nowrap;
+}
+
+.quiz-custom-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.quiz-custom-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--beige);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quiz-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  opacity: 0;
+  pointer-events: none;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  z-index: 2000;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.quiz-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.dna-summary {
+  padding: 8px 0 12px;
+  animation: dnaFadeIn 0.5s ease;
+}
+
+.dna-summary-loading {
+  text-align: center;
+  padding: 48px 20px;
+}
+
+.dna-summary-spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 20px;
+  border: 3px solid rgba(47, 74, 58, 0.15);
+  border-top-color: var(--forest);
+  border-radius: 50%;
+  animation: dnaSpin 0.8s linear infinite;
+}
+
+.dna-summary-hero {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.dna-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--beige);
+  border: 1px solid #E5DFD4;
+  color: #7A6F5E;
+  font-weight: 800;
+  font-size: 0.88rem;
+  margin-bottom: 16px;
+}
+
+.dna-summary-badge svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dna-summary-badge-complete {
+  background: rgba(47, 74, 58, 0.08);
+  border-color: rgba(47, 74, 58, 0.18);
+  color: var(--forest);
+}
+
+.dna-summary h1 {
+  font-family: Georgia, serif;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+
+.dna-summary-lead {
+  color: var(--muted);
+  font-weight: 700;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.dna-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.dna-summary-card {
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+  animation: dnaSlideUp 0.45s ease both;
+}
+
+.dna-summary-card-featured {
+  grid-column: 1 / -1;
+  background: var(--beige);
+  border-color: #E5DFD4;
+}
+
+.dna-summary-label {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dna-summary-card h3 {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.dna-summary-section {
+  margin-bottom: 24px;
+  animation: dnaSlideUp 0.45s ease 0.15s both;
+}
+
+.dna-summary-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dna-summary-tag {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(47, 74, 58, 0.08);
+  color: var(--forest);
+  font-weight: 700;
+  border: 1px solid rgba(47, 74, 58, 0.12);
+}
+
+.dna-book-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.dna-book-card {
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  animation: dnaSlideUp 0.45s ease both;
+}
+
+.dna-book-card h4 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+
+.dna-book-author {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.dna-book-reason {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.dna-summary-empty {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.dna-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+  animation: dnaSlideUp 0.45s ease 0.25s both;
+}
+
+.dna-summary-actions .btn {
+  flex: 1 1 160px;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.btn-ghost:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+@keyframes dnaFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dnaSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dnaSpin {
+  to { transform: rotate(360deg); }
+}
+
+html.theme-dark .quiz-custom-input,
+html.theme-dark .dna-summary-card,
+html.theme-dark .dna-book-card {
+  background: var(--surface-elevated);
+}
+
+html.theme-dark .dna-summary-card-featured,
+html.theme-dark .dna-summary-badge,
+html.theme-dark .quiz-custom-tag {
+  background: var(--surface);
+}
+
+@media (max-width: 640px) {
+  .dna-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dna-summary-actions {
+    flex-direction: column;
+  }
+
+  .dna-summary-actions .btn {
+    width: 100%;
+  }
 }
 
 .library-summary-grid-4 {

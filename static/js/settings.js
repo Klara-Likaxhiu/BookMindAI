@@ -1,20 +1,13 @@
 /** BookMindAI Settings page controller. */
 const BookMindSettings = {
   STORAGE_KEY: "bookmind_settings",
-  GENRES: [
-    "Fantasy",
-    "Romance",
-    "Mystery",
-    "Thriller",
-    "Horror",
-    "Sci-Fi",
-    "Historical Fiction",
-    "Classics",
-    "Biography",
-    "Self-help",
-    "Poetry",
-    "Young Adult"
-  ],
+  get GENRES() {
+    return window.BookMindGenres?.ALL || [
+      "Fantasy", "Romance", "Mystery", "Thriller", "Horror", "Sci-Fi",
+      "Historical Fiction", "Literary Fiction", "Contemporary Fiction", "Classics",
+      "Non-fiction", "Memoir", "Biography", "Self-help", "Poetry", "Young Adult"
+    ];
+  },
 
   defaults() {
     return {

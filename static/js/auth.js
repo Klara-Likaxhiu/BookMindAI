@@ -1034,9 +1034,10 @@ const BookMindAuth = {
     const params = new URLSearchParams(window.location.search);
     const next = params.get("next");
     const hasProfile = localStorage.getItem("readerProfile");
+    const quizComplete = Number(localStorage.getItem("reader_profile_completion")) >= 100;
     if (next && !next.includes("login") && !next.includes("signup")) {
       window.location.href = next.startsWith("/") ? next : `/${next}`;
-    } else if (hasProfile) {
+    } else if (hasProfile || quizComplete) {
       window.location.href = "/home";
     } else {
       window.location.href = "/reader-quiz";

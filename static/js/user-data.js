@@ -26,10 +26,68 @@ const BookMindUserData = {
     }
     const data = await BookMindAPI.get("/api/user/reader-profile");
     if (data.profile) {
-      localStorage.setItem("readerProfile", JSON.stringify(data.profile));
-      return data.profile;
+      const row = data.profile;
+      let profileData = row.profile_data || {};
+      if (!profileData.reader_type && !profileData.recommendations && row.reader_type) {
+        profileData = row;
+      }
+      localStorage.setItem("readerProfile", JSON.stringify(profileData));
+
+      const quizState = profileData.quiz_state;
+      if (quizState) {
+        localStorage.setItem("reader_quiz_answers", JSON.stringify(quizState.answers || {}));
+        localStorage.setItem("reader_quiz_step", String(quizState.current_step ?? 0));
+        localStorage.setItem("reader_profile_completion", String(quizState.completion ?? 0));
+      }
+
+      return profileData;
     }
     return null;
+  },
+
+  async loadQuizProgress() {
+    if (!BookMindAuth.isLoggedIn()) return null;
+    const data = await BookMindAPI.get("/api/user/reader-profile");
+    const quizState = data.profile?.profile_data?.quiz_state;
+    if (!quizState) return null;
+
+    localStorage.setItem("reader_quiz_answers", JSON.stringify(quizState.answers || {}));
+    localStorage.setItem("reader_quiz_step", String(quizState.current_step ?? 0));
+    localStorage.setItem("reader_profile_completion", String(quizState.completion ?? 0));
+    return quizState;
+  },
+
+  async saveQuizProgress({ answers, currentStep, completion }) {
+    localStorage.setItem("reader_quiz_answers", JSON.stringify(answers));
+    localStorage.setItem("reader_quiz_step", String(currentStep));
+    localStorage.setItem("reader_profile_completion", String(completion));
+
+    if (!BookMindAuth.isLoggedIn()) return { answers, currentStep, completion };
+
+    const existing = JSON.parse(localStorage.getItem("readerProfile") || "null") || {};
+    const profileData = {
+      ...existing,
+      quiz_state: {
+        answers,
+        current_step: currentStep,
+        completion,
+        updated_at: new Date().toISOString(),
+      },
+    };
+
+    await BookMindAPI.put("/api/user/reader-profile", {
+      quiz_answers: typeof answers === "object"
+        ? Object.entries(answers)
+            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
+            .join("\n")
+        : "",
+      books_read: existing.books_read || "",
+      reading_level: answers.readingExperience || existing.confirmed_reading_level || "",
+      profile_data: profileData,
+    });
+
+    localStorage.setItem("readerProfile", JSON.stringify(profileData));
+    return { answers, currentStep, completion };
   },
 
   async saveReaderProfile(profile) {

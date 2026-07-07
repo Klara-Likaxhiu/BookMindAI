@@ -80,21 +80,52 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function updateDNAProgress() {
-    const completion = Number(localStorage.getItem("reader_profile_completion")) || 25;
+    const completion = Number(localStorage.getItem("reader_profile_completion")) || 0;
 
-    document.getElementById("dnaProgressTitle").textContent = `${completion}% Complete`;
+    document.getElementById("dnaProgressTitle").textContent =
+      completion >= 100 ? "Discovery Complete" : `${completion}% Complete`;
     document.getElementById("dnaProgressFill").style.width = `${completion}%`;
 
+    const subtitle = document.getElementById("dnaProgressSubtitle");
+    const continueButtons = ["continueDiscoveryTop", "continueDiscoveryMain"];
+
     if (completion >= 100) {
-      ["continueDiscoveryTop", "continueDiscoveryMain"].forEach(id => {
+      continueButtons.forEach(id => {
         const button = document.getElementById(id);
         if (button) button.style.display = "none";
       });
 
-      const subtitle = document.getElementById("dnaProgressSubtitle");
       if (subtitle) {
-        subtitle.textContent = "Discovery complete — your reading profile is ready.";
+        subtitle.textContent = "Your reading profile is ready — explore personalized picks.";
       }
+      return;
+    }
+
+    if (completion <= 0) {
+      continueButtons.forEach(id => {
+        const button = document.getElementById(id);
+        if (button) {
+          button.style.display = "";
+          button.textContent = "Start Reader DNA Quiz";
+        }
+      });
+
+      if (subtitle) {
+        subtitle.textContent = "Take the quiz to unlock personalized recommendations.";
+      }
+      return;
+    }
+
+    continueButtons.forEach(id => {
+      const button = document.getElementById(id);
+      if (button) {
+        button.style.display = "";
+        button.textContent = "Continue Quiz";
+      }
+    });
+
+    if (subtitle) {
+      subtitle.textContent = "Pick up where you left off and finish your Reader DNA.";
     }
   }
 

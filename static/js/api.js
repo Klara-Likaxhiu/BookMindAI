@@ -139,8 +139,11 @@ const BookMindAPI = {
     }
 
     const readerProfile = JSON.parse(localStorage.getItem("readerProfile"));
-    const discoveryAnswers = JSON.parse(localStorage.getItem("reader_discovery_answers"));
-    const extraDiscoveryAnswers = JSON.parse(localStorage.getItem("reader_extra_discovery_answers"));
+    const quizAnswers = JSON.parse(localStorage.getItem("reader_quiz_answers"));
+    const discoveryAnswers = quizAnswers || JSON.parse(localStorage.getItem("reader_discovery_answers"));
+    const extraDiscoveryAnswers = quizAnswers
+      ? {}
+      : JSON.parse(localStorage.getItem("reader_extra_discovery_answers"));
 
     const library = BookMindLibrary.getLibrary();
     const reviews = JSON.parse(localStorage.getItem("book_reviews")) || [];
@@ -149,7 +152,8 @@ const BookMindAPI = {
       profile: readerProfile,
       discovery_answers: discoveryAnswers,
       extra_discovery_answers: extraDiscoveryAnswers,
-      profile_completion: localStorage.getItem("reader_profile_completion") || "25",
+      quiz_answers: quizAnswers,
+      profile_completion: localStorage.getItem("reader_profile_completion") || "0",
       library: library,
       excluded_books: BookMindLibrary.getExcludedBooks(),
       reviews: reviews,

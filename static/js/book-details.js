@@ -82,7 +82,7 @@ function setupSidebarDna() {
   const fillEl = document.getElementById("sidebarDnaFill");
   if (!percentEl || !fillEl) return;
 
-  const completion = Number(localStorage.getItem("reader_profile_completion")) || 25;
+  const completion = Number(localStorage.getItem("reader_profile_completion")) || 0;
   percentEl.textContent = completion + "%";
   fillEl.style.width = completion + "%";
 }
