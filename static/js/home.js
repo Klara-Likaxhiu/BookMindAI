@@ -39,7 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   updateDNAProgress();
   setupMoodAndGoal();
-  loadHomeIntelligence();
+  loadHomeIntelligence().finally(updateDNAProgress);
   renderRecommendations();
 
   async function loadHomeIntelligence() {
@@ -87,29 +87,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function isReaderDnaComplete() {
-    const completion = Number(localStorage.getItem("reader_profile_completion")) || 0;
-    if (completion >= 100) return true;
-
-    try {
-      const storedProfile = JSON.parse(localStorage.getItem("readerProfile") || "null");
-      if (storedProfile?.quiz_state?.completion >= 100) return true;
-    } catch {
-      /* ignore */
+  function updateDNAProgress() {
+    if (window.BookMindReaderDna?.applyHomeVisibility()) {
+      return;
     }
 
-    return false;
-  }
-
-  function updateDNAProgress() {
     const progressCard = document.getElementById("dnaProgressCard");
     const continueButtons = ["continueDiscoveryTop", "continueDiscoveryMain"];
 
-    if (isReaderDnaComplete()) {
-      progressCard?.remove();
-      continueButtons.forEach(id => document.getElementById(id)?.remove());
-      return;
-    }
+    if (!progressCard) return;
 
     const completion = Number(localStorage.getItem("reader_profile_completion")) || 0;
 

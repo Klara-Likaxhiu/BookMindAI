@@ -3912,6 +3912,12 @@ html.theme-dark .quiz-custom-tag {
   display: none !important;
 }
 
+html.reader-dna-complete #dnaProgressCard,
+html.reader-dna-complete #continueDiscoveryTop,
+html.reader-dna-complete #continueDiscoveryMain {
+  display: none !important;
+}
+
 .dna-progress-card .eyebrow {
   color: #7A6F5E;
 }

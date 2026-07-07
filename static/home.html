@@ -3,6 +3,14 @@
 <head>
   <title>Home - BookMindAI</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="js/reader-dna-state.js"></script>
+  <script>
+    try {
+      if (window.BookMindReaderDna?.isComplete()) {
+        document.documentElement.classList.add("reader-dna-complete");
+      }
+    } catch (e) { /* localStorage unavailable */ }
+  </script>
   <script src="js/auth.js"></script>
 
   <script src="js/api.js" defer></script>
