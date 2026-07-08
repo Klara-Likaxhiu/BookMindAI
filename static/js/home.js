@@ -129,7 +129,7 @@ function recommendationsSkeleton(count = 3) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (window.BookMindAuth?.whenReady) {
-    await BookMindAuth.whenReady();
+    await window.BookMindAuth.whenReady();
   }
 
   const user = window.BookMindAuth?.getCurrentUser();

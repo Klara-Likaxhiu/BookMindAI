@@ -86,7 +86,7 @@ const BookImport = {
     }
 
     if (window.BookMindAuth?.whenReady) {
-      await BookMindAuth.whenReady();
+      await window.BookMindAuth.whenReady();
     }
 
     const token = await BookMindAPI.ensureAuth({ redirect: false });
@@ -287,7 +287,7 @@ const BookImport = {
 
     try {
       if (window.BookMindAuth?.whenReady) {
-        await BookMindAuth.whenReady();
+        await window.BookMindAuth.whenReady();
       }
 
       const token = await BookMindAPI.ensureAuth({ redirect: true });

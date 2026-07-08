@@ -797,7 +797,7 @@ async function retakeQuiz() {
 
 async function initQuiz() {
   if (window.BookMindAuth?.whenReady) {
-    await BookMindAuth.whenReady();
+    await window.BookMindAuth.whenReady();
   }
 
   if (window.BookMindUserData?.loadQuizProgress) {

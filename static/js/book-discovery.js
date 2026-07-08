@@ -219,7 +219,7 @@ const BookMindDetailModal = {
     if (!book || Date.now() < this._ignoreOpenUntil) return;
 
     if (window.BookMindAuth?.whenReady) {
-      await BookMindAuth.whenReady();
+      await window.BookMindAuth.whenReady();
     }
 
     if (window.BookMindAuth?.isLoggedIn()) {
@@ -514,7 +514,7 @@ const BookMindDiscovery = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (window.BookMindAuth?.whenReady) {
-    await BookMindAuth.whenReady();
+    await window.BookMindAuth.whenReady();
   }
 
   if (window.BookMindAuth?.isLoggedIn()) {

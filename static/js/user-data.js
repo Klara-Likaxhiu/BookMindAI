@@ -5,7 +5,7 @@ const BookMindUserData = {
   _hydrateTtlMs: 5 * 60 * 1000,
 
   async loadSettings() {
-    if (!BookMindAuth.isLoggedIn()) return null;
+    if (!window.BookMindAuth?.isLoggedIn()) return null;
     const data = await BookMindAPI.get("/api/user/settings");
     if (data.settings) {
       localStorage.setItem("bookmind_settings", JSON.stringify(data.settings));
@@ -14,7 +14,7 @@ const BookMindUserData = {
   },
 
   async saveSettings(settings) {
-    if (!BookMindAuth.isLoggedIn()) {
+    if (!window.BookMindAuth?.isLoggedIn()) {
       localStorage.setItem("bookmind_settings", JSON.stringify(settings));
       return settings;
     }
@@ -24,7 +24,7 @@ const BookMindUserData = {
   },
 
   async loadReaderProfile() {
-    if (!BookMindAuth.isLoggedIn()) {
+    if (!window.BookMindAuth?.isLoggedIn()) {
       const raw = localStorage.getItem("readerProfile");
       return raw ? JSON.parse(raw) : null;
     }
@@ -50,7 +50,7 @@ const BookMindUserData = {
   },
 
   async loadQuizProgress() {
-    if (!BookMindAuth.isLoggedIn()) return null;
+    if (!window.BookMindAuth?.isLoggedIn()) return null;
     const data = await BookMindAPI.get("/api/user/reader-profile");
     const quizState = data.profile?.profile_data?.quiz_state;
     if (!quizState) return null;
@@ -66,7 +66,7 @@ const BookMindUserData = {
     localStorage.setItem("reader_quiz_step", String(currentStep));
     localStorage.setItem("reader_profile_completion", String(completion));
 
-    if (!BookMindAuth.isLoggedIn()) return { answers, currentStep, completion };
+    if (!window.BookMindAuth?.isLoggedIn()) return { answers, currentStep, completion };
 
     const existing = JSON.parse(localStorage.getItem("readerProfile") || "null") || {};
     const profileData = {
@@ -97,7 +97,7 @@ const BookMindUserData = {
 
   async saveReaderProfile(profile) {
     localStorage.setItem("readerProfile", JSON.stringify(profile));
-    if (!BookMindAuth.isLoggedIn()) return profile;
+    if (!window.BookMindAuth?.isLoggedIn()) return profile;
     const data = await BookMindAPI.put("/api/user/reader-profile", {
       quiz_answers: profile.quiz_answers || profile.quizAnswers || "",
       books_read: profile.books_read || profile.booksRead || "",
@@ -109,7 +109,7 @@ const BookMindUserData = {
   },
 
   async hydrate({ force = false } = {}) {
-    if (!BookMindAuth.isLoggedIn()) return;
+    if (!window.BookMindAuth?.isLoggedIn()) return;
 
     const freshEnough = !force && this._hydratedAt && Date.now() - this._hydratedAt < this._hydrateTtlMs;
     if (freshEnough) return;

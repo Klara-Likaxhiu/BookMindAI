@@ -34,7 +34,7 @@ function initialize() {
 
 async function initBookDetails() {
   if (window.BookMindAuth?.whenReady) {
-    await BookMindAuth.whenReady();
+    await window.BookMindAuth.whenReady();
   }
 
   const saved = BookMindUI.readStorageJson("selectedBook");

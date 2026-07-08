@@ -135,7 +135,7 @@ const BookMindAuthUI = {
         googleBtn.addEventListener("click", async () => {
           BookMindAuthUI.setLoading(googleBtn, true, "Continue with Google", "Signing in…");
           try {
-            await BookMindAuth.signInWithGoogle(config.google_client_id, rememberMeSelector, onSuccess);
+            await window.BookMindAuth.signInWithGoogle(config.google_client_id, rememberMeSelector, onSuccess);
             BookMindAuthUI.showToast("Signed in with Google!");
             if (onSuccess) onSuccess();
           } catch (error) {
@@ -158,7 +158,7 @@ const BookMindAuthUI = {
         appleBtn.addEventListener("click", async () => {
           BookMindAuthUI.setLoading(appleBtn, true, "Continue with Apple", "Signing in…");
           try {
-            await BookMindAuth.signInWithApple(config.apple_client_id, rememberMeSelector, onSuccess);
+            await window.BookMindAuth.signInWithApple(config.apple_client_id, rememberMeSelector, onSuccess);
             BookMindAuthUI.showToast("Signed in with Apple!");
             if (onSuccess) onSuccess();
           } catch (error) {
@@ -185,5 +185,7 @@ const BookMindAuthUI = {
     }
   }
 };
+
+window.BookMindAuthUI = BookMindAuthUI;
 
 document.addEventListener("DOMContentLoaded", () => BookMindAuthUI.initPasswordToggles());

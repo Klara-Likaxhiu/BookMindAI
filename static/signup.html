@@ -3,8 +3,8 @@
 <head>
   <title>Sign Up - BookMindAI</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="js/auth.js"></script>
   <script src="js/auth-ui.js"></script>
-  <script src="js/auth.js" defer></script>
 </head>
 <body>
 
@@ -50,59 +50,6 @@
     </p>
   </div>
 </div>
-
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    BookMindAuthUI.initPasswordToggles();
-    BookMindAuthUI.loadOAuthButtons("oauthButtons", () => BookMindAuth.redirectAfterLogin(), "#rememberMe");
-
-    document.getElementById("signupForm").addEventListener("submit", async e => {
-      e.preventDefault();
-      BookMindAuth.hideError("signupError");
-
-      const username = document.getElementById("username").value.trim();
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-      const confirmPassword = document.getElementById("confirmPassword").value;
-      const button = document.getElementById("signupBtn");
-
-      if (!/^[^\s]{3,30}$/.test(username)) {
-        BookMindAuth.showError("signupError", "Username must be 3–30 characters (letters, numbers, and symbols allowed; no spaces).");
-        return;
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        BookMindAuth.showError("signupError", "Please enter a valid email address (e.g. name+tag@example.com).");
-        return;
-      }
-      if (password.length < 8) {
-        BookMindAuth.showError("signupError", "Password must be at least 8 characters.");
-        return;
-      }
-      if (password !== confirmPassword) {
-        BookMindAuth.showError("signupError", "Passwords do not match.");
-        return;
-      }
-
-      BookMindAuthUI.setLoading(button, true, "Create Account", "Creating account…");
-
-      try {
-        const data = await BookMindAuth.signup(username, email, password);
-        if (data.verification_required) {
-          BookMindAuth.redirectToVerifyEmailPending(email, data);
-          return;
-        }
-        BookMindAuthUI.showToast("Account created!");
-        window.location.href = localStorage.getItem("readerProfile") ? "home.html" : "reader-quiz.html";
-      } catch (error) {
-        BookMindAuth.showError(
-          "signupError",
-          BookMindAuth.formatErrorForUser(error)
-        );
-        BookMindAuthUI.setLoading(button, false, "Create Account");
-      }
-    });
-  });
-</script>
 
 </body>
 </html>

@@ -27,7 +27,7 @@ class BookMindApiError extends Error {
   }
 }
 
-const BookMindAuth = {
+var BookMindAuth = {
   ACCESS_KEY: "bookmind_access_token",
   REFRESH_KEY: "bookmind_refresh_token",
   USER_KEY: "bookmind_auth_user",
@@ -673,35 +673,51 @@ const BookMindAuth = {
   },
 
   async signup(username, email, password) {
-    const endpoint = this.apiUrl("/api/auth/signup");
-    const data = await this.api("/api/auth/signup", { username, email, password });
-    if (data.verification_required) {
-      this.clearPendingSignupState();
-    } else if (data.access_token) {
-      this.saveSession(data);
+    console.info("[BookMindAuth] signup attempt", { username, email });
+    try {
+      const data = await this.api("/api/auth/signup", { username, email, password });
+      console.info("[BookMindAuth] signup success", {
+        verification_required: Boolean(data.verification_required),
+        hasAccessToken: Boolean(data.access_token),
+      });
+      if (data.verification_required) {
+        this.clearPendingSignupState();
+      } else if (data.access_token) {
+        this.saveSession(data);
+      }
+      return data;
+    } catch (error) {
+      console.error("[BookMindAuth] signup failed", error);
+      throw error;
     }
-    return data;
   },
 
   async login(login, password, rememberMe) {
-    const data = await this.api("/api/auth/login", {
-      login,
-      password,
-      remember_me: rememberMe
-    });
-      verification_required: data.verification_required,
-      hasAccessToken: Boolean(data.access_token),
-      hasRefreshToken: Boolean(data.refresh_token),
-      hasUser: Boolean(data.user),
-    });
-    if (data.verification_required) {
-      this.clearPendingSignupState();
-    } else if (data.access_token) {
-      this.saveSession(data);
-    } else {
-      throw new Error("Login succeeded but the server did not return a session token.");
+    console.info("[BookMindAuth] login attempt", { login, rememberMe });
+    try {
+      const data = await this.api("/api/auth/login", {
+        login,
+        password,
+        remember_me: rememberMe
+      });
+      console.info("[BookMindAuth] login success", {
+        verification_required: Boolean(data.verification_required),
+        hasAccessToken: Boolean(data.access_token),
+        hasRefreshToken: Boolean(data.refresh_token),
+        hasUser: Boolean(data.user),
+      });
+      if (data.verification_required) {
+        this.clearPendingSignupState();
+      } else if (data.access_token) {
+        this.saveSession({ ...data, remember_me: rememberMe });
+      } else {
+        throw new Error("Login succeeded but the server did not return a session token.");
+      }
+      return data;
+    } catch (error) {
+      console.error("[BookMindAuth] login failed", error);
+      throw error;
     }
-    return data;
   },
 
   async verifyEmail(payload, type = "signup") {
@@ -1206,6 +1222,10 @@ const BookMindAuth = {
     }
   },
 
+  _authUi() {
+    return window.BookMindAuthUI || (typeof BookMindAuthUI !== "undefined" ? BookMindAuthUI : null);
+  },
+
   initSignupPage() {
     this.prepareSignupPage();
     const params = new URLSearchParams(window.location.search);
@@ -1216,6 +1236,130 @@ const BookMindAuth = {
         window.history.replaceState({}, "", path);
       }
     }
+
+    const ui = this._authUi();
+    if (ui) {
+      ui.initPasswordToggles();
+      const rememberSelector = document.querySelector("#rememberMe") ? "#rememberMe" : null;
+      ui.loadOAuthButtons("oauthButtons", () => this.redirectAfterLogin(), rememberSelector);
+    } else {
+      console.warn("[BookMindAuth] auth-ui.js not loaded — password toggles and OAuth unavailable");
+    }
+
+    const form = document.getElementById("signupForm");
+    if (!form || form.dataset.bookmindBound === "1") return;
+    form.dataset.bookmindBound = "1";
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      this.hideError("signupError");
+
+      const username = document.getElementById("username")?.value.trim() || "";
+      const email = document.getElementById("email")?.value.trim() || "";
+      const password = document.getElementById("password")?.value || "";
+      const confirmPassword = document.getElementById("confirmPassword")?.value || "";
+      const button = document.getElementById("signupBtn");
+
+      if (!/^[^\s]{3,30}$/.test(username)) {
+        this.showError("signupError", "Username must be 3–30 characters (letters, numbers, and symbols allowed; no spaces).");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        this.showError("signupError", "Please enter a valid email address (e.g. name+tag@example.com).");
+        return;
+      }
+      if (password.length < 8) {
+        this.showError("signupError", "Password must be at least 8 characters.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        this.showError("signupError", "Passwords do not match.");
+        return;
+      }
+
+      if (ui) ui.setLoading(button, true, "Create Account", "Creating account…");
+
+      try {
+        const data = await this.signup(username, email, password);
+        if (data.verification_required) {
+          this.redirectToVerifyEmailPending(email, data);
+          return;
+        }
+        if (ui) ui.showToast("Account created!");
+        window.location.href = localStorage.getItem("readerProfile") ? "home.html" : "reader-quiz.html";
+      } catch (error) {
+        this.showError("signupError", this.formatErrorForUser(error));
+        if (ui) ui.setLoading(button, false, "Create Account");
+      }
+    });
+  },
+
+  initLoginPage() {
+    this.prepareLoginPage();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verified") === "1") {
+      const banner = document.getElementById("verifiedBanner");
+      if (banner) banner.hidden = false;
+      const email = params.get("email");
+      if (email) {
+        const loginInput = document.getElementById("login");
+        if (loginInput) loginInput.value = email;
+      }
+    }
+
+    const ui = this._authUi();
+    if (ui) {
+      ui.initPasswordToggles();
+      ui.loadOAuthButtons("oauthButtons", () => this.redirectAfterLogin(), "#rememberMe");
+    } else {
+      console.warn("[BookMindAuth] auth-ui.js not loaded — password toggles and OAuth unavailable");
+    }
+
+    const form = document.getElementById("loginForm");
+    if (!form || form.dataset.bookmindBound === "1") return;
+    form.dataset.bookmindBound = "1";
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      this.hideError("loginError");
+
+      const login = document.getElementById("login")?.value.trim() || "";
+      const password = document.getElementById("password")?.value || "";
+      const rememberMe = document.getElementById("rememberMe")?.checked ?? true;
+      const button = document.getElementById("loginBtn");
+
+      if (!login || !password) {
+        this.showError("loginError", "Please enter your username/email and password.");
+        return;
+      }
+
+      if (ui) ui.setLoading(button, true, "Log In", "Logging in…");
+
+      try {
+        const data = await this.login(login, password, rememberMe);
+        if (data.verification_required) {
+          if (ui) {
+            ui.showError(
+              "loginError",
+              data.message || "Please verify your email before logging in. Check your inbox for the verification link."
+            );
+            ui.setLoading(button, false, "Log In");
+          } else {
+            this.showError(
+              "loginError",
+              data.message || "Please verify your email before logging in. Check your inbox for the verification link."
+            );
+          }
+          return;
+        }
+        if (ui) ui.showToast("Welcome back!");
+        this.redirectAfterLogin();
+      } catch (error) {
+        this.showError("loginError", error.message || "Could not log in. Please try again.");
+        if (ui) ui.setLoading(button, false, "Log In");
+      }
+    });
   },
 
   initVerifyEmailPendingPage() {
@@ -1456,9 +1600,31 @@ const BookMindAuth = {
       });
   },
 
-  showError: (id, msg) => BookMindAuthUI.showError(id, msg),
-  hideError: id => BookMindAuthUI.hideError(id)
+  showError(id, msg) {
+    console.error("[BookMindAuth]", id, msg);
+    const ui = this._authUi();
+    if (ui?.showError) {
+      ui.showError(id, msg);
+      return;
+    }
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+  },
+
+  hideError(id) {
+    const ui = this._authUi();
+    if (ui?.hideError) {
+      ui.hideError(id);
+      return;
+    }
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  }
 };
+
+window.BookMindAuth = BookMindAuth;
 
 function whenDomReady(fn) {
   if (document.readyState === "loading") {
@@ -1478,6 +1644,7 @@ function whenDomReady(fn) {
   if (page === "signup.html") {
     BookMindAuth.clearAllAuthState();
     BookMindAuth._publishAuthState("signup-cleared");
+    whenDomReady(() => BookMindAuth.initSignupPage());
     return;
   }
 
@@ -1501,7 +1668,12 @@ function whenDomReady(fn) {
     } else if (BookMindAuth.PUBLIC_AUTH_PAGES.has(page)) {
       await BookMindAuth.guardPublicAuthPage();
       if (page === "login.html") {
-        whenDomReady(() => BookMindAuth.applyAuthUiConfig());
+        whenDomReady(() => {
+          BookMindAuth.applyAuthUiConfig();
+          BookMindAuth.initLoginPage();
+        });
+      } else if (page === "signup.html") {
+        whenDomReady(() => BookMindAuth.initSignupPage());
       }
     }
     whenDomReady(() => BookMindAuth.setupLogoutLinks());
@@ -1516,5 +1688,4 @@ function whenDomReady(fn) {
   whenDomReady(() => BookMindAuth.setupLogoutLinks());
 })();
 
-window.BookMindAuth = BookMindAuth;
 window.BookMindApiError = BookMindApiError;

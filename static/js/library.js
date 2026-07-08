@@ -14,12 +14,12 @@ const BookMindLibrary = {
 
   _authHeaders() {
     if (!window.BookMindAuth) return {};
-    return BookMindAuth.getAuthHeaders();
+    return window.BookMindAuth.getAuthHeaders();
   },
 
   apiUrl(path) {
     if (window.BookMindAuth?.apiUrl) {
-      return BookMindAuth.apiUrl(path);
+      return window.BookMindAuth.apiUrl(path);
     }
     const normalized = path.startsWith("/") ? path : `/${path}`;
     return `${window.location.origin}${normalized}`;
@@ -53,7 +53,7 @@ const BookMindLibrary = {
 
   _extractError(data, rawBody, status) {
     if (window.BookMindAuth?.extractErrorMessage) {
-      return BookMindAuth.extractErrorMessage(data, rawBody, status);
+      return window.BookMindAuth.extractErrorMessage(data, rawBody, status);
     }
     if (typeof data?.detail === "string") return data.detail;
     if (Array.isArray(data?.detail)) {
@@ -90,7 +90,7 @@ const BookMindLibrary = {
 
   async ensureLoaded(force = false) {
     if (window.BookMindAuth?.whenReady) {
-      await BookMindAuth.whenReady();
+      await window.BookMindAuth.whenReady();
     }
 
     if (!(await this._hasAuth())) {

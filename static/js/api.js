@@ -1,12 +1,12 @@
 /**
  * BookMindAI API client — attaches Supabase Bearer token to protected requests.
- * Refreshes expired sessions automatically via BookMindAuth.refreshSession().
+ * Refreshes expired sessions automatically via window.BookMindAuth.refreshSession().
  * Requires js/auth.js loaded first.
  */
 const BookMindAPI = {
   url(path) {
     if (window.BookMindAuth?.apiUrl) {
-      return BookMindAuth.apiUrl(path);
+      return window.BookMindAuth.apiUrl(path);
     }
     const normalized = path.startsWith("/") ? path : `/${path}`;
     return `${window.location.origin}${normalized}`;
@@ -23,18 +23,18 @@ const BookMindAPI = {
 
   _isAuthExpired(status, data, rawBody) {
     if (window.BookMindAuth?.isAuthExpiredError) {
-      return BookMindAuth.isAuthExpiredError(status, data, rawBody);
+      return window.BookMindAuth.isAuthExpiredError(status, data, rawBody);
     }
     return status === 401;
   },
 
   async _refreshAndRetry({ redirect = false } = {}) {
     if (!window.BookMindAuth?.refreshSession) return false;
-    const refreshed = await BookMindAuth.refreshSession({ clearOnFailure: false });
+    const refreshed = await window.BookMindAuth.refreshSession({ clearOnFailure: false });
     if (refreshed) return true;
 
-    if (redirect && BookMindAuth.handleAuthFailure) {
-      BookMindAuth.handleAuthFailure();
+    if (redirect && window.BookMindAuth.handleAuthFailure) {
+      window.BookMindAuth.handleAuthFailure();
       return false;
     }
     return false;
@@ -42,33 +42,33 @@ const BookMindAPI = {
 
   async ensureAuth({ redirect = false } = {}) {
     if (window.BookMindAuth?.whenReady) {
-      await BookMindAuth.whenReady();
+      await window.BookMindAuth.whenReady();
     }
-    if (window.BookMindAuth?._syncSessionFromStorage && !BookMindAuth._session?.ready) {
-      BookMindAuth._syncSessionFromStorage();
+    if (window.BookMindAuth?._syncSessionFromStorage && !window.BookMindAuth._session?.ready) {
+      window.BookMindAuth._syncSessionFromStorage();
     }
 
     let token =
       window.BookMindAuth?.getAccessToken?.() ||
-      localStorage.getItem(BookMindAuth?.ACCESS_KEY || "bookmind_access_token") ||
+      localStorage.getItem(window.BookMindAuth?.ACCESS_KEY || "bookmind_access_token") ||
       null;
 
     if (!token) {
-      if (redirect && BookMindAuth?.handleAuthFailure) {
-        BookMindAuth.handleAuthFailure();
+      if (redirect && window.BookMindAuth?.handleAuthFailure) {
+        window.BookMindAuth.handleAuthFailure();
       }
       return null;
     }
 
     if (window.BookMindAuth?.isAccessTokenExpired?.(token)) {
-      const fresh = await BookMindAuth.ensureFreshSession({ clearOnFailure: redirect });
+      const fresh = await window.BookMindAuth.ensureFreshSession({ clearOnFailure: redirect });
       if (!fresh) {
-        if (redirect && BookMindAuth.handleAuthFailure) {
-          BookMindAuth.handleAuthFailure();
+        if (redirect && window.BookMindAuth.handleAuthFailure) {
+          window.BookMindAuth.handleAuthFailure();
         }
         return null;
       }
-      token = BookMindAuth.getAccessToken();
+      token = window.BookMindAuth.getAccessToken();
     }
 
     return token;
@@ -76,7 +76,7 @@ const BookMindAPI = {
 
   _extractError(data, rawBody, status) {
     if (window.BookMindAuth?.extractErrorMessage) {
-      return BookMindAuth.extractErrorMessage(data, rawBody, status);
+      return window.BookMindAuth.extractErrorMessage(data, rawBody, status);
     }
     if (typeof data?.detail === "string") return data.detail;
     return `Request failed (HTTP ${status}).`;
@@ -91,11 +91,11 @@ const BookMindAPI = {
         throw new Error("Not authenticated. Please sign in.");
       }
     } else if (window.BookMindAuth?.whenReady) {
-      await BookMindAuth.whenReady();
-      if (window.BookMindAuth?._syncSessionFromStorage && !BookMindAuth._session?.ready) {
-        BookMindAuth._syncSessionFromStorage();
+      await window.BookMindAuth.whenReady();
+      if (window.BookMindAuth?._syncSessionFromStorage && !window.BookMindAuth._session?.ready) {
+        window.BookMindAuth._syncSessionFromStorage();
       }
-      token = BookMindAuth.getAccessToken() || null;
+      token = window.BookMindAuth.getAccessToken() || null;
     }
 
     const url = this.url(path);
@@ -159,7 +159,7 @@ const BookMindAPI = {
       !force &&
       token &&
       cachedUser?.id &&
-      !BookMindAuth.isAccessTokenExpired?.(token)
+      !window.BookMindAuth.isAccessTokenExpired?.(token)
     ) {
       return cachedUser;
     }
@@ -167,9 +167,9 @@ const BookMindAPI = {
     const data = await this.get("/api/auth/me", { redirect });
     if (!data) return null;
     if (data.user && window.BookMindAuth?._persistUser) {
-      BookMindAuth._persistUser(data.user);
-      if (BookMindAuth._meCache && token) {
-        BookMindAuth._meCache = { token, user: data.user, at: Date.now() };
+      window.BookMindAuth._persistUser(data.user);
+      if (window.BookMindAuth._meCache && token) {
+        window.BookMindAuth._meCache = { token, user: data.user, at: Date.now() };
       }
     }
     return data.user || null;

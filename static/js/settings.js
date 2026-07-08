@@ -75,7 +75,7 @@ const BookMindSettings = {
 
   async init() {
     if (window.BookMindAuth) {
-      await BookMindAuth.whenReady();
+      await window.BookMindAuth.whenReady();
     }
 
     const token = window.BookMindAPI
@@ -84,7 +84,7 @@ const BookMindSettings = {
     if (!token) return;
 
     this.settings = this.load();
-    this.authUser = window.BookMindAuth ? BookMindAuth.getCurrentUser() : null;
+    this.authUser = window.BookMindAuth ? window.BookMindAuth.getCurrentUser() : null;
     this.readerProfile = JSON.parse(localStorage.getItem("readerProfile") || "null");
     this.userProfile = JSON.parse(localStorage.getItem("bookmind_user_profile") || "{}");
 
@@ -167,7 +167,7 @@ const BookMindSettings = {
     });
 
     document.getElementById("settingsLogoutBtn")?.addEventListener("click", () => {
-      if (window.BookMindAuth) BookMindAuth.logout();
+      if (window.BookMindAuth) window.BookMindAuth.logout();
     });
 
     document.getElementById("settingsChangePasswordBtn")?.addEventListener("click", () => {
@@ -357,10 +357,10 @@ const BookMindSettings = {
       }
 
       try {
-        await BookMindAuth.changePassword(current, next);
+        await window.BookMindAuth.changePassword(current, next);
         this.closeModal("passwordModal");
         this.showToast("Password updated. Signing you out…");
-        setTimeout(() => BookMindAuth.logout(), 1200);
+        setTimeout(() => window.BookMindAuth.logout(), 1200);
       } catch (error) {
         this.showToast(error.message || "Could not change password.", "error");
       }
@@ -377,8 +377,8 @@ const BookMindSettings = {
       }
 
       try {
-        await BookMindAuth.deleteAccount(password, confirmation);
-        BookMindAuth.clearSession();
+        await window.BookMindAuth.deleteAccount(password, confirmation);
+        window.BookMindAuth.clearSession();
         window.location.href = "/login.html";
       } catch (error) {
         this.showToast(error.message || "Could not delete account.", "error");
