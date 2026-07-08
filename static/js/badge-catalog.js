@@ -466,6 +466,39 @@ window.BookMindBadgeCatalog = {
         icon: "message",
         rarity: "rare",
       }, "reviewCount", 5),
+
+      /* ── Reading Path completion ── */
+      count("path-journey-one", {
+        category: "milestones",
+        title: "Pathfinder",
+        description: "Complete your first Reading Path",
+        icon: "compass",
+        rarity: "rare",
+      }, "pathsCompleted", 1),
+
+      count("path-journey-three", {
+        category: "milestones",
+        title: "Trailblazer",
+        description: "Complete three Reading Paths",
+        icon: "trophy",
+        rarity: "epic",
+      }, "pathsCompleted", 3),
+
+      count("path-journey-five", {
+        category: "milestones",
+        title: "Master Navigator",
+        description: "Complete five Reading Paths",
+        icon: "flag",
+        rarity: "legendary",
+      }, "pathsCompleted", 5),
+
+      flag("path-advanced-unlock", {
+        category: "milestones",
+        title: "Advanced Paths Unlocked",
+        description: "Earned by completing a full Reading Path",
+        icon: "sparkles",
+        rarity: "epic",
+      }, ctx => ctx.pathsCompleted >= 1),
     ];
   },
 };

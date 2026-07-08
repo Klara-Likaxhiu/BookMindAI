@@ -222,10 +222,12 @@ function filterBadges(badges) {
 }
 
 function updateLevelHero(stats) {
-  const level = Math.max(1, Math.floor(stats.totalFinished / 3) + 1);
+  const pathXp = window.BookMindPathCompletion?.readXpBonus?.() || 0;
+  const totalXp = stats.totalFinished * 50 + pathXp;
+  const level = Math.max(1, Math.floor(totalXp / 150) + 1);
   const xpPct = stats.goals.yearly
     ? Math.min(100, Math.round((stats.booksThisYear / stats.goals.yearly) * 100))
-    : Math.min(100, (stats.totalFinished % 3) * 33);
+    : Math.min(100, Math.round(((totalXp % 150) / 150) * 100));
 
   const badge = document.getElementById("readerLevelBadge");
   const title = document.getElementById("levelTitle");

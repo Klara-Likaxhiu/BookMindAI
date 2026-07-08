@@ -11,6 +11,9 @@
   <script src="js/library.js" defer></script>
   <script src="js/ui.js" defer></script>
   <script src="js/book-cover.js" defer></script>
+  <script src="js/badge-catalog.js" defer></script>
+  <script src="js/badge-engine.js" defer></script>
+  <script src="js/reading-path-completion.js" defer></script>
   <script src="js/reading-paths.js" defer></script>
 </head>
 <body>
@@ -29,13 +32,53 @@
       <button id="generateBtn" class="btn btn-primary" type="button">Generate My Journey</button>
     </header>
 
+    <section id="pathStatsBar" class="path-stats-bar" hidden></section>
+
     <section id="pathsMessage" class="paths-message-clean" style="display:none;"></section>
+
+    <section id="pathsUnlockBanner" class="path-unlock-banner" hidden></section>
+
+    <section id="activePathsSection" class="paths-section" hidden>
+      <h2 class="paths-section-title">Active Reading Paths</h2>
+      <div id="activePathsGrid" class="paths-grid"></div>
+    </section>
+
+    <section id="completedPathsSection" class="paths-section" hidden>
+      <h2 class="paths-section-title">Completed Reading Paths</h2>
+      <div id="completedPathsGrid" class="paths-grid paths-grid-completed"></div>
+    </section>
+
     <section id="pathsGrid" class="paths-grid"></section>
 
   </main>
 </div>
 
 <div id="pathsToast" class="library-toast" hidden></div>
+
+<div id="pathCompletionModal" class="path-completion-modal" hidden aria-hidden="true">
+  <div class="path-completion-backdrop" data-action="close-modal"></div>
+  <div class="path-completion-dialog" role="dialog" aria-labelledby="pathCompletionTitle">
+    <div class="path-completion-confetti" aria-hidden="true"></div>
+    <div class="path-completion-icon">🎉</div>
+    <h2 id="pathCompletionTitle">Reading Path Complete!</h2>
+    <p class="path-completion-sub">Congratulations!</p>
+    <p class="path-completion-path-name" id="pathCompletionPathName"></p>
+
+    <div class="path-completion-rewards" id="pathCompletionRewards"></div>
+
+    <div class="path-completion-share card" id="pathCompletionShareCard">
+      <p class="eyebrow">Shareable achievement</p>
+      <h3 id="pathCompletionShareTitle"></h3>
+      <p id="pathCompletionShareMeta"></p>
+      <div class="path-completion-share-badge" id="pathCompletionShareBadge"></div>
+    </div>
+
+    <div class="path-completion-actions">
+      <button type="button" class="btn btn-secondary" id="pathCompletionShareBtn">Share achievement</button>
+      <button type="button" class="btn btn-primary" data-action="close-modal">Continue reading</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

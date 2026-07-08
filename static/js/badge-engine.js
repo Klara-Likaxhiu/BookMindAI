@@ -152,6 +152,17 @@ window.BookMindBadgeEngine = {
     const topGenreEntry = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0];
     const topAuthorEntry = Object.entries(authorCounts).sort((a, b) => b[1] - a[1])[0];
 
+    let pathStats = { pathsCompleted: 0, activePaths: 0, completionRate: 0, avgCompletionDays: 0 };
+    if (window.BookMindPathCompletion) {
+      try {
+        const rawPaths = JSON.parse(localStorage.getItem("bookmind_reading_paths") || "null");
+        const paths = rawPaths?.paths || [];
+        pathStats = BookMindPathCompletion.computeAggregateStats(paths);
+      } catch {
+        /* ignore */
+      }
+    }
+
     return {
       library,
       readBooks,
@@ -207,6 +218,11 @@ window.BookMindBadgeEngine = {
       dnaAdventure: /adventure|high-stakes|bold/.test(mood + goals),
       readerType: profile.reader_type || "",
       favoriteGenres: profile.favorite_genres || answers.favoriteGenres || [],
+      pathsCompleted: pathStats.pathsCompleted,
+      activePaths: pathStats.activePaths,
+      pathCompletionRate: pathStats.completionRate,
+      avgPathCompletionDays: pathStats.avgCompletionDays,
+      favoritePathCategory: pathStats.favoriteCategory || "",
     };
   },
 
