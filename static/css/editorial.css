@@ -1144,9 +1144,204 @@ html.reader-dna-complete #continueDiscoveryTop {
 }
 
 .community-tab.active {
-  color: var(--navy);
-  border-bottom-color: var(--navy);
+  color: var(--heading-text);
+  border-bottom-color: var(--button-bg);
   font-weight: 600;
+}
+
+.community-feed.community-for-you {
+  display: block;
+}
+
+.community-for-you-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.community-section {
+  padding: 24px;
+}
+
+.community-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.community-section-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--heading-text);
+}
+
+.community-link-btn {
+  border: none;
+  background: none;
+  color: var(--accent-dark);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.community-link-btn:hover {
+  opacity: 0.8;
+}
+
+.community-grid-compact {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.community-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.community-discussion-card,
+.community-club-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  min-width: 0;
+}
+
+.community-discussions-grid {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.community-clubs-grid {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.community-discussion-card h3,
+.community-club-card h3 {
+  margin: 6px 0 8px;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--heading-text);
+}
+
+.community-discussion-book {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  color: var(--body-text);
+}
+
+.community-discussion-by {
+  display: block;
+  color: var(--muted-text);
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+.community-discussion-meta,
+.community-club-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--muted-text);
+}
+
+.community-reply-count {
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+
+.community-club-icon {
+  font-size: 1.75rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+}
+
+.community-club-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.community-club-book {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+  color: var(--body-text);
+}
+
+.community-club-theme {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--muted-text);
+}
+
+.community-similar-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.community-similar-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.community-similar-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--beige), var(--butter));
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--heading-text);
+  flex-shrink: 0;
+}
+
+.community-similar-card strong {
+  display: block;
+  color: var(--heading-text);
+}
+
+.community-similar-overlap {
+  margin: 2px 0;
+  font-size: 0.82rem;
+  color: var(--muted-text);
+}
+
+.community-similar-books {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--body-text);
+}
+
+.community-similar-card .btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.community-discussion-card .btn,
+.community-club-card .btn {
+  align-self: flex-start;
+  width: 100%;
+}
+
+.community-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .community-feed {
@@ -1712,6 +1907,22 @@ html.reader-dna-complete #continueDiscoveryTop {
   .companion-layout,
   .journey-chart-section {
     grid-template-columns: 1fr;
+  }
+
+  .community-grid,
+  .community-grid-compact,
+  .community-discussions-grid,
+  .community-clubs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .community-similar-card {
+    flex-wrap: wrap;
+  }
+
+  .community-similar-card .btn {
+    margin-left: 0;
+    width: 100%;
   }
 
   .community-grid {
