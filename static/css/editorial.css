@@ -31,6 +31,11 @@
   --card: var(--white);
   --text: var(--charcoal);
   --ink: var(--navy);
+
+  --readable-body: #374151;
+  --readable-secondary: #4B5563;
+  --readable-heading: #1F2937;
+  --readable-link: #B45309;
 }
 
 body {
@@ -42,7 +47,7 @@ h1, h2, h3, .display-serif {
   font-family: var(--font-serif);
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: var(--navy);
+  color: var(--readable-heading, var(--navy));
 }
 
 .card {
@@ -51,6 +56,7 @@ h1, h2, h3, .display-serif {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
   transition: box-shadow 0.3s ease, transform 0.3s ease;
+  color: var(--readable-body, var(--charcoal));
 }
 
 .card:hover {
@@ -82,7 +88,7 @@ h1, h2, h3, .display-serif {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--readable-secondary, var(--muted));
 }
 
 /* ---- App shell ---- */
@@ -107,10 +113,15 @@ h1, h2, h3, .display-serif {
 
 .dashboard-header p,
 .page-subtitle {
-  color: var(--muted);
+  color: var(--readable-secondary, var(--muted));
   font-size: 15px;
   margin: 0;
   max-width: 520px;
+}
+
+.dashboard-header h1,
+.dashboard h1 {
+  color: var(--readable-heading, var(--navy));
 }
 
 /* ---- Sidebar editorial ---- */
@@ -823,6 +834,10 @@ html.reader-dna-complete #continueDiscoveryTop {
   color: #fff;
 }
 
+.dna-archetype-card.card {
+  color: #fff;
+}
+
 .dna-archetype-visual {
   position: absolute;
   inset: 0;
@@ -850,8 +865,34 @@ html.reader-dna-complete #continueDiscoveryTop {
   margin: 8px 0;
 }
 
+.dna-archetype-content p {
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  line-height: 1.55;
+}
+
 .dna-radar-card {
   padding: 28px;
+  color: var(--readable-body, var(--charcoal));
+}
+
+.dna-radar-card .eyebrow {
+  color: var(--readable-secondary, var(--muted));
+}
+
+.dna-radar-card h2 {
+  color: var(--readable-heading, var(--navy));
+}
+
+.dna-trait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--off-white);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--readable-body, var(--charcoal));
 }
 
 .dna-radar-chart {
@@ -866,16 +907,6 @@ html.reader-dna-complete #continueDiscoveryTop {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   margin-top: 20px;
-}
-
-.dna-trait {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--off-white);
-  border-radius: var(--radius-sm);
-  font-size: 14px;
 }
 
 .dna-timeline {
@@ -1375,19 +1406,20 @@ html.reader-dna-complete #continueDiscoveryTop {
 .journey-stat-card {
   padding: 24px 20px;
   text-align: center;
+  color: var(--readable-body, var(--charcoal));
 }
 
 .journey-stat-card strong {
   display: block;
   font-family: var(--font-serif);
   font-size: 2rem;
-  color: var(--navy);
+  color: var(--readable-heading, var(--navy));
   line-height: 1.1;
 }
 
 .journey-stat-card span {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--readable-secondary, var(--muted));
   margin-top: 4px;
   display: block;
 }
@@ -1402,6 +1434,17 @@ html.reader-dna-complete #continueDiscoveryTop {
 .journey-line-chart {
   padding: 32px;
   min-height: 280px;
+  color: var(--readable-body, var(--charcoal));
+}
+
+.journey-line-chart h2,
+.journey-donut-wrap h2 {
+  color: var(--readable-heading, var(--navy));
+}
+
+.journey-line-chart .eyebrow,
+.journey-donut-wrap .eyebrow {
+  color: var(--readable-secondary, var(--muted));
 }
 
 .journey-donut-wrap {
@@ -1409,6 +1452,7 @@ html.reader-dna-complete #continueDiscoveryTop {
   display: flex;
   flex-direction: column;
   align-items: center;
+  color: var(--readable-body, var(--charcoal));
 }
 
 .journey-donut {
@@ -1443,6 +1487,7 @@ html.reader-dna-complete #continueDiscoveryTop {
   gap: 10px;
   font-size: 13px;
   margin-bottom: 8px;
+  color: var(--readable-secondary, var(--muted));
 }
 
 .journey-legend-dot {
@@ -1455,7 +1500,61 @@ html.reader-dna-complete #continueDiscoveryTop {
   text-align: center;
   padding: 24px;
   font-size: 15px;
-  color: var(--muted);
+  color: var(--readable-secondary, var(--muted));
+}
+
+/* Reader DNA page — theme-aware readable surfaces */
+.journey-wrapped {
+  color: var(--readable-body, var(--charcoal));
+}
+
+.journey-wrapped .page-subtitle,
+.journey-wrapped .dashboard-header > div > p {
+  color: var(--readable-secondary, var(--muted));
+}
+
+.journey-wrapped .display-serif {
+  color: var(--readable-heading, var(--navy));
+}
+
+.journey-wrapped .journey-stat-card strong {
+  color: var(--readable-heading, var(--navy));
+}
+
+.journey-wrapped .journey-stat-card span {
+  color: var(--readable-secondary, var(--muted));
+}
+
+.journey-wrapped .journey-line-chart,
+.journey-wrapped .journey-donut-wrap,
+.journey-wrapped .journey-insight {
+  color: var(--readable-body, var(--charcoal));
+}
+
+.journey-wrapped .journey-line-chart h2,
+.journey-wrapped .journey-donut-wrap h2,
+.journey-wrapped .journey-insight h2 {
+  color: var(--readable-heading, var(--navy));
+}
+
+.journey-wrapped .journey-line-chart .eyebrow,
+.journey-wrapped .journey-donut-wrap .eyebrow,
+.journey-wrapped .journey-insight .eyebrow {
+  color: var(--readable-secondary, var(--muted));
+}
+
+.journey-wrapped .journey-legend-item {
+  color: var(--readable-secondary, var(--muted));
+}
+
+.journey-wrapped .journey-insight p,
+.journey-wrapped #insightList p {
+  color: var(--readable-body, var(--charcoal));
+}
+
+.journey-wrapped .journey-insight #insightList svg {
+  color: var(--forest);
+  stroke: var(--forest);
 }
 
 .journey-grid {

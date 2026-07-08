@@ -36,6 +36,12 @@
   --muted: #6B7280;
   --text-secondary: #5C6670;
 
+  /* WCAG-friendly readable text (light surfaces) */
+  --readable-body: #374151;
+  --readable-secondary: #4B5563;
+  --readable-heading: #1F2937;
+  --readable-link: #B45309;
+
   --primary: var(--forest);
   --primary-strong: var(--forest-hover);
   --primary-light: var(--progress-green);
@@ -154,6 +160,7 @@ button, .btn {
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition-smooth), transform var(--transition-smooth);
+  color: var(--readable-body, var(--text));
 }
 
 .card:hover {
@@ -1268,8 +1275,12 @@ html.auth-pending body {
 }
 
 .dashboard-header p {
-  color: var(--text-secondary);
+  color: var(--readable-secondary, var(--text-secondary));
   font-weight: 700;
+}
+
+.page-subtitle {
+  color: var(--readable-secondary, var(--text-secondary));
 }
 
 .dashboard-grid {
@@ -1335,7 +1346,7 @@ html.auth-pending body {
 }
 
 .journey-insight .eyebrow {
-  color: #5A7088;
+  color: var(--readable-secondary, #5A7088);
 }
 
 .reader-profile {
@@ -1357,23 +1368,24 @@ html.auth-pending body {
 }
 
 .eyebrow {
-  color: var(--navy);
+  color: var(--readable-secondary, var(--muted));
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   font-size: 12px;
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .highlight-card h2 {
   font-family: Georgia, serif;
   font-size: 34px;
   margin: 8px 0;
+  color: var(--readable-heading, var(--ink));
 }
 
 .highlight-card p {
   max-width: 720px;
-  color: var(--text-secondary);
+  color: var(--readable-body, var(--text-secondary));
   line-height: 1.6;
 }
 
@@ -1817,10 +1829,11 @@ html.auth-pending body {
   font-size: 32px;
 }
 
-.journey-insight p {
-  color: var(--text-secondary);
-  font-weight: 700;
-  line-height: 1.6;
+.journey-insight p,
+.journey-insight #insightList p {
+  color: var(--readable-body, var(--text-secondary));
+  font-weight: 500;
+  line-height: 1.65;
 }
 
 .growth-tags {
@@ -1833,13 +1846,14 @@ html.auth-pending body {
 .growth-tag-btn {
   padding: 12px 18px;
   border-radius: 999px;
-  background: rgba(168, 197, 160,0.25);
-  color: var(--primary);
-  font-weight: 900;
+  background: rgba(180, 83, 9, 0.08);
+  color: var(--readable-link, #B45309);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .growth-tag-btn {
-  border: 1px solid rgba(168, 197, 160, 0.45);
+  border: 1px solid rgba(180, 83, 9, 0.22);
   cursor: pointer;
   font: inherit;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -1847,8 +1861,15 @@ html.auth-pending body {
 
 .growth-tag-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-  background: rgba(168, 197, 160, 0.38);
+  box-shadow: 0 4px 14px rgba(180, 83, 9, 0.12);
+  background: rgba(180, 83, 9, 0.14);
+  color: var(--readable-link, #B45309);
+}
+
+.growth-hint {
+  margin: 0 0 12px;
+  color: var(--readable-secondary, var(--muted));
+  font-size: 0.92rem;
 }
 
 .growth-tag-btn.is-loading {
@@ -1856,15 +1877,9 @@ html.auth-pending body {
   cursor: wait;
 }
 
-.growth-hint {
-  margin: 0 0 12px;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
 .growth-note {
   margin-top: 12px;
-  color: #b45309;
+  color: var(--readable-link, #B45309);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -2686,6 +2701,11 @@ html.theme-dark {
   --muted: #8B96A3;
   --text-secondary: #9AA5B1;
 
+  --readable-body: #E5E7EB;
+  --readable-secondary: #D1D5DB;
+  --readable-heading: #F3F4F6;
+  --readable-link: #FCD34D;
+
   /* Muted sage — gentle, not bright */
   --forest: #4F7262;
   --forest-hover: #426055;
@@ -3459,6 +3479,126 @@ html.theme-dark .path-completed-ribbon {
   color: #2a2520;
 }
 
+/* Dark mode — readable text on dark surfaces (app-wide) */
+html.theme-dark .card:not(.dna-archetype-card) {
+  color: var(--readable-body);
+}
+
+html.theme-dark h1,
+html.theme-dark h2,
+html.theme-dark h3,
+html.theme-dark .display-serif,
+html.theme-dark .dashboard h1 {
+  color: var(--readable-heading);
+}
+
+html.theme-dark .page-subtitle,
+html.theme-dark .dashboard-header p {
+  color: var(--readable-secondary);
+}
+
+html.theme-dark .journey-insight,
+html.theme-dark .journey-wrapped .journey-line-chart,
+html.theme-dark .journey-wrapped .journey-donut-wrap,
+html.theme-dark .journey-wrapped .journey-stat-card {
+  background: var(--card);
+  border-color: var(--border-neutral);
+  color: var(--readable-body);
+}
+
+html.theme-dark .journey-insight h2,
+html.theme-dark .journey-wrapped .journey-line-chart h2,
+html.theme-dark .journey-wrapped .journey-donut-wrap h2 {
+  color: var(--readable-heading);
+}
+
+html.theme-dark .journey-insight p,
+html.theme-dark .journey-wrapped #insightList p,
+html.theme-dark .highlight-card p,
+html.theme-dark .home-brief h2 {
+  color: var(--readable-body);
+}
+
+html.theme-dark .dna-trait {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--readable-body);
+}
+
+html.theme-dark .dna-radar-card {
+  color: var(--readable-body);
+}
+
+html.theme-dark .growth-tag-btn,
+html.theme-dark .growth-tags span {
+  background: rgba(252, 211, 77, 0.1);
+  color: var(--readable-link);
+  border-color: rgba(252, 211, 77, 0.25);
+}
+
+html.theme-dark .growth-hint,
+html.theme-dark .journey-legend-item,
+html.theme-dark .journey-footer-note {
+  color: var(--readable-secondary);
+}
+
+html.theme-dark .library-summary-grid .stats-card p,
+html.theme-dark .stats-card p {
+  color: var(--readable-secondary);
+}
+
+html.theme-dark .community-card-head h3,
+html.theme-dark .community-card-body,
+html.theme-dark .community-card-head .book-author {
+  color: var(--readable-body);
+}
+
+html.theme-dark .companion-hero p,
+html.theme-dark .companion-answer,
+html.theme-dark .chat-shell .message {
+  color: var(--readable-body);
+}
+
+html.theme-dark .journey-stat-pill,
+html.theme-dark .journey-highlight-card {
+  color: var(--readable-body);
+}
+
+html.theme-dark .journey-stat-pill strong {
+  color: var(--readable-heading);
+}
+
+html.theme-dark ::placeholder {
+  color: var(--readable-secondary);
+  opacity: 0.85;
+}
+
+html.theme-dark .journey-donut::after {
+  background: var(--card);
+}
+
+html.theme-dark .dna-archetype-card,
+html.theme-dark .dna-archetype-card.card {
+  color: #fff;
+}
+
+html.theme-dark .home-brief,
+html.theme-dark .stats-card,
+html.theme-dark .goal-card,
+html.theme-dark .companion-hero,
+html.theme-dark .companion-answer,
+html.theme-dark .community-card {
+  color: var(--readable-body);
+}
+
+html.theme-dark .stats-card strong,
+html.theme-dark .home-brief h2 {
+  color: var(--readable-heading);
+}
+
+html.theme-dark .recommendation-reason-box p {
+  color: var(--readable-body);
+}
+
 .settings-modal {
   position: fixed;
   inset: 0;
@@ -3783,8 +3923,9 @@ body.settings-modal-open {
 .mood-options button:hover,
 .goal-options button:hover,
 .active-mood {
-  background: linear-gradient(135deg, var(--primary), var(--primary-strong)) !important;
-  color: white !important;
+  background: var(--lavender) !important;
+  border-color: #D8D2E6 !important;
+  color: var(--readable-heading, var(--navy)) !important;
   transform: translateY(-2px);
 }
 
@@ -3821,6 +3962,7 @@ body.settings-modal-open {
   font-family: Georgia, serif;
   font-size: 30px;
   margin: 6px 0 8px;
+  color: var(--readable-heading, var(--ink));
 }
 
 .highlight-card p {
@@ -3849,6 +3991,7 @@ body.settings-modal-open {
   line-height: 1.3;
   margin: 8px 0 0;
   max-width: 900px;
+  color: var(--readable-heading, var(--navy));
 }
 
 .journey-insight .eyebrow {
@@ -6661,6 +6804,10 @@ body.import-open {
   color: #fff;
 }
 
+.path-icon-emoji {
+  color: var(--readable-heading, var(--navy)) !important;
+}
+
 .path-icon .icon {
   width: 32px;
   height: 32px;
@@ -7674,10 +7821,10 @@ body.journey-modal-open {
 }
 
 .eyebrow {
-  color: var(--navy);
+  color: var(--readable-secondary, var(--muted));
   font-weight: 600;
   letter-spacing: 0.1em;
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .section-title a {
@@ -8024,3 +8171,73 @@ select:focus,
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 }
 
+/* ============================================================
+   Readable text on light surfaces (WCAG AA)
+   ============================================================ */
+::placeholder {
+  color: var(--readable-secondary, var(--text-secondary));
+  opacity: 0.85;
+}
+
+.dashboard h1 {
+  color: var(--readable-heading, var(--ink));
+}
+
+.card h2,
+.card h3 {
+  color: var(--readable-heading, var(--ink));
+}
+
+.card p,
+.stats-card p,
+.home-brief p,
+.companion-hero p,
+.companion-answer p,
+.community-card-body,
+.community-card-body p,
+.reasoning-box p,
+.recommendation-reason-box p {
+  color: var(--readable-body, var(--text));
+}
+
+.stats-card span,
+.stats-row span,
+.journey-stat-pill span {
+  color: var(--readable-secondary, var(--text-secondary));
+}
+
+.stats-card strong,
+.journey-stat-pill strong {
+  color: var(--readable-heading, var(--ink));
+}
+
+.section-title a,
+a.text-link {
+  color: var(--readable-link, #B45309);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.section-title a:hover,
+a.text-link:hover {
+  opacity: 0.85;
+}
+
+/* Dark-surface cards keep light text — do not inherit readable-body */
+.dna-archetype-card,
+.dna-archetype-card.card,
+.path-hero-card,
+.journey-modal-premium,
+.journey-modal-inner,
+.user-message,
+.btn-primary,
+.library-toast,
+#pathsToast {
+  color: inherit;
+}
+
+.dna-archetype-card h2,
+.dna-archetype-card p,
+.dna-archetype-card .eyebrow {
+  color: inherit;
+}
