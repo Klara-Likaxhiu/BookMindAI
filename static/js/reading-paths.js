@@ -554,7 +554,7 @@ function renderActivePathCard(path, pathIndex) {
         ${(path.books || []).map((book, index) => `
           <div class="path-book ${book.completed ? "done" : ""}">
             <div class="path-step">${book.completed ? svg("check", "icon-inline") : index + 1}</div>
-            <div class="path-book-cover">${window.BookMindCoverImage ? BookMindCoverImage.html(book, { imgClass: "path-book-cover-img book-cover-img", wrapClass: "book-cover-wrap path-cover-wrap", placeholderClass: "path-book-cover-ph book-cover-placeholder" }) : svg("book")}</div>
+            <div class="path-book-cover">${window.BookCover ? BookCover.html(book, { imgClass: "path-book-cover-img book-cover-img", wrapClass: "book-cover-wrap path-cover-wrap", placeholderClass: "path-book-cover-ph book-cover-placeholder" }) : svg("book")}</div>
             <div class="path-book-info">
               <span>${escapeHtml(book.level || "Recommended")}${book.difficulty ? ` · ${escapeHtml(book.difficulty)}` : ""}</span>
               <h3>${escapeHtml(book.title || "Untitled")}</h3>
@@ -721,9 +721,9 @@ function renderPaths(result) {
   }
   datalist.innerHTML = libraryTitleOptions();
 
-  if (window.BookMindCoverImage) {
-    BookMindCoverImage.seedFromBooks(paths.flatMap(p => p.books || []));
-    BookMindCoverImage.hydrateLazy(activePathsGrid, { imgClass: "path-book-cover-img book-cover-img" });
+  if (window.BookCover) {
+    BookCover.seedFromBooks(paths.flatMap(p => p.books || []));
+    BookCover.hydrateLazy(activePathsGrid, { imgClass: "path-book-cover-img book-cover-img" });
   }
 
   activePathsGrid.querySelector(".path-card-focus")?.scrollIntoView({ behavior: "smooth", block: "start" });

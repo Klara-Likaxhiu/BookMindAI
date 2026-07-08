@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.deps import get_verified_user
+from app.cover_service import enrich_books_in_list, normalize_cover_url
 from app.library_store import (
     LibraryStoreError,
     delete_book,
@@ -15,6 +16,7 @@ from app.library_store import (
     list_user_books,
     upsert_book,
     update_book,
+    update_book_cover,
     update_reading_progress,
     touch_last_opened,
     VALID_STATUSES,
@@ -51,6 +53,14 @@ class ReadingProgressRequest(BaseModel):
     total_pages: int = Field(..., gt=0)
 
 
+class LibraryCoverRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    author: str | None = None
+    cover_url: str = Field(..., min_length=8, max_length=2000)
+    library_id: str | None = None
+    isbn: str | None = None
+
+
 def _raise_store_error(exc: LibraryStoreError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -83,12 +93,38 @@ def get_library(user: dict = Depends(get_verified_user)) -> dict:
     except LibraryStoreError as exc:
         _raise_store_error(exc)
 
+    books = enrich_books_in_list(books, cache_only=True)
+
     grouped = group_by_status(books)
     return {
         "library": grouped,
         "books": books,
         "stats": {status: len(grouped.get(status, [])) for status in VALID_STATUSES},
     }
+
+
+@router.post("/cover")
+def save_resolved_cover(data: LibraryCoverRequest, user: dict = Depends(get_verified_user)) -> dict:
+    """Save a Google Books (or other) cover URL back to the user's library book."""
+    normalized = normalize_cover_url(data.cover_url)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid cover_url.")
+
+    try:
+        saved = update_book_cover(
+            user["id"],
+            cover_url=normalized,
+            library_id=data.library_id,
+            title=data.title,
+            author=data.author,
+        )
+    except LibraryStoreError as exc:
+        _raise_store_error(exc)
+
+    if not saved:
+        return {"book": None, "message": "Cover cached; no matching library book to update."}
+
+    return {"book": saved, "message": "Cover saved to library."}
 
 
 @router.post("")

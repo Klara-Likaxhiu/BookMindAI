@@ -185,8 +185,8 @@
 
       <div class="companion-card-grid">
         ${recs.map(book => {
-          const coverHtml = window.BookMindCoverImage
-            ? BookMindCoverImage.html(book, {
+          const coverHtml = window.BookCover
+            ? BookCover.html(book, {
                 imgClass: "companion-cover-img book-cover-img",
                 wrapClass: "companion-cover-wrap book-cover-wrap",
                 placeholderClass: "custom-cover book-cover-placeholder",
@@ -217,8 +217,8 @@
 
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    if (window.BookMindCoverImage) {
-      BookMindCoverImage.hydrateMany(recs, chatMessages, { imgClass: "companion-cover-img book-cover-img" });
+    if (window.BookCover) {
+      BookCover.hydrateMany(recs, chatMessages, { imgClass: "companion-cover-img book-cover-img" });
     }
   }
 

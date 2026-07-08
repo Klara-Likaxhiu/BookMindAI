@@ -374,13 +374,13 @@ function renderReviewCard(review) {
   const date = review.updated || review.created;
   const dateStr = date ? new Date(date).toLocaleDateString() : "";
 
-  const cover = window.BookMindCoverImage
-    ? BookMindCoverImage.html(
+  const cover = window.BookCover
+    ? BookCover.html(
         {
           title: review.book_title,
           author: review.author,
           genre: review.genre,
-          cover_url: review.cover_url,
+          coverUrl: review.cover_url,
         },
         {
           imgClass: "community-cover-img book-cover-img",
@@ -401,7 +401,7 @@ function renderReviewCard(review) {
 
   return `
     <article class="community-card card community-review-card" data-book="${bookData}" data-action="open-book">
-      ${window.BookMindCoverImage ? cover : `<div class="community-card-cover">${cover}</div>`}
+      ${cover}
       <div class="community-card-body">
         <div class="community-card-head">
           <div>
@@ -509,15 +509,15 @@ function saveJoinedClub(clubId) {
 }
 
 function hydrateCovers() {
-  if (!window.BookMindCoverImage || !feed) return;
+  if (!window.BookCover || !feed) return;
   const books = state.reviews.map(r => ({
     title: r.book_title,
     author: r.author,
     genre: r.genre,
     cover_url: r.cover_url,
   }));
-  BookMindCoverImage.seedFromBooks(books);
-  BookMindCoverImage.hydrateLazy(feed, { imgClass: "community-cover-img book-cover-img" });
+  BookCover.seedFromBooks(books);
+  BookCover.hydrateLazy(feed, { imgClass: "community-cover-img book-cover-img" });
 }
 
 function renderSkeleton() {

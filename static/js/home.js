@@ -49,15 +49,15 @@ function renderContinueReading() {
   const { current, total, percent } = BookMindLibrary.getProgressInfo(book);
   const pagesLeft = total > 0 ? Math.max(0, total - current) : null;
 
-  const coverHtml = window.BookMindCoverImage
-    ? BookMindCoverImage.html(book, { imgClass: "book-cover-img", wrapClass: "continue-cover book-cover-wrap" })
+  const coverHtml = window.BookCover
+    ? BookCover.html(book, { imgClass: "book-cover-img", wrapClass: "continue-cover book-cover-wrap" })
     : `<div class="continue-cover"><div class="premium-book-placeholder mystery-cover"></div></div>`;
 
   card.innerHTML = `
     ${coverHtml}
     <div class="continue-reading-info">
       <p class="eyebrow">Continue Reading</p>
-      <h2>${BookMindCoverImage?.escape?.(book.title) || book.title}</h2>
+      <h2>${BookCover?.escape?.(book.title) || book.title}</h2>
       <p class="book-author">${book.author || "Unknown Author"}</p>
       <div class="continue-progress-bar"><div class="continue-progress-fill" style="width:${percent}%"></div></div>
       <p class="continue-progress-meta">${percent}% complete${pagesLeft != null ? ` · ${pagesLeft} pages left` : ""}</p>
@@ -73,8 +73,8 @@ function renderContinueReading() {
     window.location.href = "book-details.html";
   });
 
-  if (window.BookMindCoverImage) {
-    BookMindCoverImage.hydrateLazy(card, { imgClass: "book-cover-img" });
+  if (window.BookCover) {
+    BookCover.hydrateLazy(card, { imgClass: "book-cover-img" });
   }
 }
 
@@ -90,11 +90,11 @@ function renderRecentlyAdded() {
 
   shelf.innerHTML = books
     .map(book => {
-      const cover = window.BookMindCoverImage
-        ? BookMindCoverImage.html(book, { imgClass: "book-cover-img", wrapClass: "shelf-book-cover book-cover-wrap" })
+      const cover = window.BookCover
+        ? BookCover.html(book, { imgClass: "book-cover-img", wrapClass: "shelf-book-cover book-cover-wrap" })
         : `<div class="shelf-book-cover"></div>`;
       return `
-        <div class="shelf-book" data-title="${BookMindCoverImage?.escape?.(book.title) || book.title}">
+        <div class="shelf-book" data-title="${BookCover?.escape?.(book.title) || book.title}">
           ${cover}
           <div class="shelf-book-title">${book.title}</div>
           <div class="shelf-book-author">${book.author || ""}</div>
@@ -110,9 +110,9 @@ function renderRecentlyAdded() {
     });
   });
 
-  if (window.BookMindCoverImage) {
-    BookMindCoverImage.seedFromBooks(books);
-    BookMindCoverImage.hydrateLazy(shelf, { imgClass: "book-cover-img" });
+  if (window.BookCover) {
+    BookCover.seedFromBooks(books);
+    BookCover.hydrateLazy(shelf, { imgClass: "book-cover-img" });
   }
 }
 
@@ -171,6 +171,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderRecommendations(profile);
   loadHomeIntelligence();
 
+  function renderTopPickCover(topPick) {
+    const slot = document.getElementById("topPickCover");
+    if (!slot || !window.BookCover) return;
+
+    if (!topPick?.title) {
+      slot.innerHTML = "";
+      slot.hidden = true;
+      return;
+    }
+
+    slot.hidden = false;
+    slot.innerHTML = BookCover.html(
+      {
+        title: topPick.title,
+        author: topPick.author,
+        genre: topPick.genre,
+        coverUrl: topPick.cover_url,
+      },
+      {
+        imgClass: "ai-pick-cover-img book-cover-img",
+        wrapClass: "ai-pick-cover-wrap book-cover-wrap",
+        placeholderClass: "ai-pick-cover-ph book-cover-placeholder",
+      }
+    );
+    BookCover.hydrateLazy(slot, { imgClass: "ai-pick-cover-img book-cover-img" });
+  }
+
   function applyIntelligence(intelligence) {
     const subtitle = document.getElementById("homeSubtitle");
     const mission = document.getElementById("todayMission");
@@ -186,6 +213,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     topPickLabel.textContent = "AI Pick of the Day";
     topPickTitle.textContent = topPick.title || "Ask BookMindAI for a recommendation";
     topPickReason.textContent = topPick.reason || "Your AI pick will appear here.";
+    renderTopPickCover(topPick);
 
     document.getElementById("topPickBtn").onclick = function () {
       const item = {
@@ -349,8 +377,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const card = document.createElement("div");
       card.className = "recommendation-card-modern card";
 
-      const coverHTML = window.BookMindCoverImage
-        ? BookMindCoverImage.html(
+      const coverHTML = window.BookCover
+        ? BookCover.html(
             { ...aiBook, ...bookData, genre },
             {
               imgClass: "recommendation-cover book-cover-img",
@@ -358,11 +386,6 @@ document.addEventListener("DOMContentLoaded", async () => {
               placeholderClass: "recommendation-cover book-cover-placeholder",
             }
           )
-        : bookData && bookData.cover_url
-        ? `
-          <div class="recommendation-cover-wrap">
-            <img class="recommendation-cover" src="${bookData.cover_url}" alt="${aiBook.title} cover" loading="lazy" decoding="async">
-          </div>`
         : `<div class="recommendation-cover-wrap"><div class="recommendation-cover fallback-cover"></div></div>`;
 
       card.innerHTML = `
@@ -421,14 +444,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       container.appendChild(card);
     });
 
-    if (window.BookMindCoverImage) {
+    if (window.BookCover) {
       const coverBooks = visibleRecommendations.map(item => ({
         ...item.ai_recommendation,
         ...item.book_data,
         genre: item.ai_recommendation?.genre || "BookMindAI",
       }));
-      BookMindCoverImage.seedFromBooks(coverBooks);
-      BookMindCoverImage.hydrateLazy(container, {
+      BookCover.seedFromBooks(coverBooks);
+      BookCover.hydrateLazy(container, {
         imgClass: "recommendation-cover book-cover-img",
       });
     }

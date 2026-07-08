@@ -1,4 +1,4 @@
-/** Reusable book cover HTML for discovery cards and modals. */
+/** Discovery UI — cover rendering delegated to BookCover. */
 const BookMindCover = {
   coverMeta(book) {
     const genre = book.genre || (book.categories && book.categories[0]) || "Book";
@@ -10,58 +10,29 @@ const BookMindCover = {
     };
   },
 
-  placeholderHtml(phClass, coverClass, icon) {
-    return `<div class="discovery-cover-placeholder custom-cover ${coverClass} ${phClass}" aria-hidden="true"><span>${icon}</span></div>`;
-  },
-
   html(book, variant = "card") {
-    if (window.BookMindCoverImage) {
-      return BookMindCoverImage.html(book, {
-        imgClass: variant === "modal" ? "discovery-detail-img book-cover-img" : "discovery-card-img book-cover-img",
-        wrapClass: variant === "modal" ? "discovery-modal-cover-slot book-cover-wrap" : "discovery-cover-slot book-cover-wrap",
-        placeholderClass: variant === "modal" ? "discovery-detail-ph book-cover-placeholder" : "discovery-card-ph book-cover-placeholder",
-      });
+    if (!window.BookCover) {
+      const { title, coverClass, icon } = this.coverMeta(book);
+      const isModal = variant === "modal";
+      const phClass = isModal ? "discovery-detail-ph" : "discovery-card-ph";
+      return `<div class="discovery-cover-slot">${this.placeholderHtml(phClass, coverClass, icon)}</div>`;
     }
 
-    const { title, coverClass, icon } = this.coverMeta(book);
-    const isModal = variant === "modal";
-    const slotClass = isModal ? "discovery-modal-cover-slot" : "discovery-cover-slot";
-    const imgClass = isModal ? "discovery-detail-img" : "discovery-card-img";
-    const phClass = isModal ? "discovery-detail-ph" : "discovery-card-ph";
-
-    const slotAttrs =
-      `class="${slotClass}" data-cover-class="${coverClass}" ` +
-      `data-cover-icon="${this.escape(icon)}" data-ph-class="${phClass}"`;
-
-    if (book.cover_url) {
-      const url = this.escape(book.cover_url);
-      return `<div ${slotAttrs}><img class="${imgClass}" src="${url}" alt="${this.escape(title)} cover" loading="lazy" onerror="BookMindCover.onImageError(this)"></div>`;
-    }
-
-    return `<div ${slotAttrs}>${this.placeholderHtml(phClass, coverClass, icon)}</div>`;
+    return BookCover.html(book, {
+      imgClass: variant === "modal" ? "discovery-detail-img book-cover-img" : "discovery-card-img book-cover-img",
+      wrapClass: variant === "modal" ? "discovery-modal-cover-slot book-cover-wrap" : "discovery-cover-slot book-cover-wrap",
+      placeholderClass: variant === "modal" ? "discovery-detail-ph book-cover-placeholder" : "discovery-card-ph book-cover-placeholder",
+    });
   },
 
   onImageError(img) {
-    if (window.BookMindCoverImage) {
-      BookMindCoverImage.onError(img);
-      return;
+    if (window.BookCover) {
+      BookCover.onError(img);
     }
+  },
 
-    const slot = img.closest("[data-cover-class]");
-    if (!slot) {
-      img.remove();
-      return;
-    }
-    img.remove();
-    if (slot.querySelector(".discovery-cover-placeholder")) return;
-
-    const coverClass = slot.dataset.coverClass || "mystery-cover";
-    const icon = slot.dataset.coverIcon || "⌕";
-    const phClass = slot.dataset.phClass || "discovery-card-ph";
-    slot.insertAdjacentHTML(
-      "beforeend",
-      BookMindCover.placeholderHtml(phClass, coverClass, icon)
-    );
+  placeholderHtml(phClass, coverClass, icon) {
+    return `<div class="discovery-cover-placeholder custom-cover ${coverClass} ${phClass}" aria-hidden="true"><span>${icon}</span></div>`;
   },
 
   escape(value) {
@@ -282,9 +253,9 @@ const BookMindDetailModal = {
 
     this.els.details.innerHTML = this.renderDetailsGrid(book);
     this.els.cover.innerHTML = BookMindCover.html(book, "modal");
-    if (window.BookMindCoverImage) {
+    if (window.BookCover) {
       const wrap = this.els.cover.querySelector(".book-cover-wrap");
-      if (wrap) BookMindCoverImage.hydrateWrap(wrap, book, { imgClass: "discovery-detail-img book-cover-img" });
+      if (wrap) BookCover.hydrateWrap(wrap, book, { imgClass: "discovery-detail-img book-cover-img" });
     }
 
     this.els.shelfBtns?.forEach(btn => {
@@ -497,9 +468,9 @@ const BookMindDiscovery = {
       this.els.results.appendChild(card);
     });
 
-    if (window.BookMindCoverImage) {
-      BookMindCoverImage.seedFromBooks(books);
-      BookMindCoverImage.hydrateLazy(this.els.results, {
+    if (window.BookCover) {
+      BookCover.seedFromBooks(books);
+      BookCover.hydrateLazy(this.els.results, {
         imgClass: "discovery-card-img book-cover-img",
       });
     }

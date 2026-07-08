@@ -78,8 +78,8 @@ function renderBookshelves() {
       standing.className = "shelf-book-standing";
       standing.title = book.title;
 
-      const coverHtml = window.BookMindCoverImage
-        ? BookMindCoverImage.html(book, {
+      const coverHtml = window.BookCover
+        ? BookCover.html(book, {
             imgClass: "book-cover-img",
             wrapClass: "shelf-standing-cover book-cover-wrap",
           })
@@ -108,9 +108,9 @@ function renderBookshelves() {
     });
     container.appendChild(addSlot);
 
-    if (window.BookMindCoverImage && books.length) {
-      BookMindCoverImage.seedFromBooks(books);
-      BookMindCoverImage.hydrateLazy(container, { imgClass: "book-cover-img" });
+    if (window.BookCover && books.length) {
+      BookCover.seedFromBooks(books);
+      BookCover.hydrateLazy(container, { imgClass: "book-cover-img" });
     }
   });
 }
@@ -255,16 +255,17 @@ function renderShelf(shelf) {
     libraryBooks.appendChild(card);
   });
 
-  if (window.BookMindCoverImage) {
+  if (window.BookCover) {
     const coverBooks = books.map(book => ({
       title: book.title,
       author: book.author,
       genre: book.genre,
       cover_url: book.cover_url,
       isbn: book.isbn,
+      library_id: book.library_id,
     }));
-    BookMindCoverImage.seedFromBooks(coverBooks);
-    BookMindCoverImage.hydrateLazy(libraryBooks, {
+    BookCover.seedFromBooks(coverBooks);
+    BookCover.hydrateLazy(libraryBooks, {
       imgClass: "shared-book-cover book-cover-img",
     });
   }

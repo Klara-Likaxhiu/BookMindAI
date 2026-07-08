@@ -426,6 +426,51 @@ def update_book(
     return _row_to_book(rows[0])
 
 
+def update_book_cover(
+    user_id: str,
+    *,
+    cover_url: str,
+    library_id: str | None = None,
+    title: str | None = None,
+    author: str | None = None,
+) -> dict[str, Any] | None:
+    """Persist a resolved cover URL onto a user's library book when possible."""
+    from app.cover_service import normalize_cover_url
+
+    normalized = normalize_cover_url(cover_url)
+    if not normalized:
+        return None
+
+    params: dict[str, str] = {"user_id": f"eq.{user_id}", "select": "*", "limit": "1"}
+    if library_id:
+        params["id"] = f"eq.{library_id}"
+    elif title:
+        params["title"] = f"eq.{title.strip()}"
+        if author:
+            params["author"] = f"eq.{author.strip()}"
+    else:
+        return None
+
+    rows = _request("GET", TABLE, params=params)
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    row = rows[0]
+    if row.get("cover_url") == normalized:
+        return _row_to_book(row)
+
+    patched = _request(
+        "PATCH",
+        TABLE,
+        params={"id": f"eq.{row['id']}", "user_id": f"eq.{user_id}", "select": "*"},
+        json={"cover_url": normalized, "updated_at": _utcnow_iso()},
+        prefer="return=representation",
+    )
+    if not isinstance(patched, list) or not patched:
+        return None
+    return _row_to_book(patched[0])
+
+
 def _get_book_row(user_id: str, *, library_id: str) -> dict[str, Any]:
     rows = _request(
         "GET",

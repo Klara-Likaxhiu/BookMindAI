@@ -1,16 +1,19 @@
 /** Centralized book cover rendering, lookup, and caching for BookMindAI. */
 const BookMindCoverImage = {
   _memoryCache: new Map(),
-  _failedUntil: new Map(),
+  _lookupFailedUntil: new Map(),
+  _brokenUrls: new Map(),
   _pending: new Map(),
   _batchQueue: new Map(),
   _batchTimer: null,
   _imageObserver: null,
   _resolveObserver: null,
   _persistTimer: null,
+  _persistedKeys: new Set(),
   _storageKey: "bookmind_cover_cache_v3",
   _failedStorageKey: "bookmind_cover_failed_v3",
-  _failedTtlMs: 30 * 60 * 1000,
+  _brokenStorageKey: "bookmind_cover_broken_v3",
+  _lookupFailedTtlMs: 30 * 60 * 1000,
 
   _loadCaches() {
     if (this._cachesLoaded) return;
@@ -32,7 +35,19 @@ const BookMindCoverImage = {
         if (failed && typeof failed === "object") {
           Object.entries(failed).forEach(([key, until]) => {
             if (typeof until === "number" && until > Date.now()) {
-              this._failedUntil.set(key, until);
+              this._lookupFailedUntil.set(key, until);
+            }
+          });
+        }
+      }
+      const brokenRaw =
+        localStorage.getItem(this._brokenStorageKey) || sessionStorage.getItem(this._brokenStorageKey);
+      if (brokenRaw) {
+        const broken = JSON.parse(brokenRaw);
+        if (broken && typeof broken === "object") {
+          Object.entries(broken).forEach(([key, urls]) => {
+            if (Array.isArray(urls) && urls.length) {
+              this._brokenUrls.set(key, new Set(urls));
             }
           });
         }
@@ -47,9 +62,16 @@ const BookMindCoverImage = {
       const payload = JSON.stringify(Object.fromEntries(this._memoryCache));
       localStorage.setItem(this._storageKey, payload);
       sessionStorage.setItem(this._storageKey, payload);
-      const failedPayload = JSON.stringify(Object.fromEntries(this._failedUntil));
+      const failedPayload = JSON.stringify(Object.fromEntries(this._lookupFailedUntil));
       localStorage.setItem(this._failedStorageKey, failedPayload);
       sessionStorage.setItem(this._failedStorageKey, failedPayload);
+      const brokenPayload = JSON.stringify(
+        Object.fromEntries(
+          [...this._brokenUrls.entries()].map(([key, urls]) => [key, [...urls]])
+        )
+      );
+      localStorage.setItem(this._brokenStorageKey, brokenPayload);
+      sessionStorage.setItem(this._brokenStorageKey, brokenPayload);
     } catch {
       /* quota */
     }
@@ -60,16 +82,48 @@ const BookMindCoverImage = {
     this._persistTimer = setTimeout(() => this._persistCaches(), 400);
   },
 
-  _isFailed(key) {
+  _isLookupFailed(key) {
     this._loadCaches();
-    const until = this._failedUntil.get(key);
+    const until = this._lookupFailedUntil.get(key);
     if (!until) return false;
     if (until <= Date.now()) {
-      this._failedUntil.delete(key);
+      this._lookupFailedUntil.delete(key);
       this._schedulePersist();
       return false;
     }
     return true;
+  },
+
+  _rememberLookupFailure(key) {
+    this._lookupFailedUntil.set(key, Date.now() + this._lookupFailedTtlMs);
+    this._schedulePersist();
+  },
+
+  _brokenSet(key) {
+    this._loadCaches();
+    if (!this._brokenUrls.has(key)) {
+      this._brokenUrls.set(key, new Set());
+    }
+    return this._brokenUrls.get(key);
+  },
+
+  _rememberBrokenUrl(key, url) {
+    if (!url) return;
+    const normalized = this.normalizeUrl(url);
+    if (!normalized) return;
+    const broken = this._brokenSet(key);
+    if (broken.has(normalized)) return;
+    broken.add(normalized);
+    if (this._memoryCache.get(key) === normalized) {
+      this._memoryCache.delete(key);
+    }
+    this._schedulePersist();
+  },
+
+  _isBrokenUrl(key, url) {
+    if (!url) return false;
+    const normalized = this.normalizeUrl(url);
+    return this._brokenSet(key).has(normalized);
   },
 
   bookRef(book) {
@@ -82,6 +136,7 @@ const BookMindCoverImage = {
       cover_url: book?.cover_url || book?.book_data?.cover_url || null,
       google_id: book?.google_id || book?.id || book?.book_id || null,
       open_library_key: book?.open_library_key || null,
+      library_id: book?.library_id || null,
     };
   },
 
@@ -95,6 +150,7 @@ const BookMindCoverImage = {
       cover_url: wrap.dataset.coverUrl || null,
       google_id: wrap.dataset.googleId || null,
       open_library_key: wrap.dataset.openLibraryKey || null,
+      library_id: wrap.dataset.libraryId || null,
     };
   },
 
@@ -106,6 +162,7 @@ const BookMindCoverImage = {
     wrap.dataset.genre = ref.genre || "Book";
     wrap.dataset.isbn = ref.isbn || "";
     if (ref.cover_url) wrap.dataset.coverUrl = ref.cover_url;
+    if (ref.library_id) wrap.dataset.libraryId = ref.library_id;
     if (options.imgClass) wrap.dataset.imgClass = options.imgClass;
   },
 
@@ -117,7 +174,20 @@ const BookMindCoverImage = {
 
   normalizeUrl(url) {
     if (!url) return null;
-    return String(url).replace(/^http:\/\//i, "https://");
+    let normalized = String(url).trim().replace(/^http:\/\//i, "https://");
+    if (normalized.includes("books.google") || normalized.includes("googleusercontent.com")) {
+      normalized = normalized.replace(/zoom=\d+/i, "zoom=0");
+      normalized = normalized.replace("&edge=curl", "");
+      normalized = normalized.replace(/w=\d+-h\d+/i, "w=800-h1200");
+    }
+    if (normalized.includes("openlibrary.org/b/")) {
+      normalized = normalized
+        .replace("-S.jpg", "-L.jpg")
+        .replace("-M.jpg", "-L.jpg")
+        .replace("-S.webp", "-L.jpg")
+        .replace("-M.webp", "-L.jpg");
+    }
+    return normalized;
   },
 
   escape(value) {
@@ -134,29 +204,40 @@ const BookMindCoverImage = {
       const ref = this.bookRef(book);
       const url = this.normalizeUrl(ref.cover_url);
       if (!url) return;
-      this._rememberSuccess(this.cacheKey(ref), url);
+      const key = this.cacheKey(ref);
+      if (this._isBrokenUrl(key, url)) return;
+      this._rememberSuccess(key, url, { persist: false });
     });
   },
 
-  /** URL known for this book — from payload or local cache (not blocked by soft-fail). */
+  /** URL known for this book — from payload or local cache (skips broken URLs). */
   getKnownUrl(ref) {
     this._loadCaches();
     const key = this.cacheKey(ref);
-    return this.normalizeUrl(ref.cover_url) || this._memoryCache.get(key) || null;
+    const candidates = [this.normalizeUrl(ref.cover_url), this._memoryCache.get(key)].filter(Boolean);
+    for (const url of candidates) {
+      if (!this._isBrokenUrl(key, url)) return url;
+    }
+    return null;
   },
 
-  _rememberSuccess(key, url) {
+  _effectiveCoverUrl(ref) {
+    const key = this.cacheKey(ref);
+    const url = this.normalizeUrl(ref.cover_url);
+    if (!url || this._isBrokenUrl(key, url)) return null;
+    return url;
+  },
+
+  _rememberSuccess(key, url, options = {}) {
+    const { persist = true, ref = null } = options;
     if (!url) return;
-    const unchanged = this._memoryCache.get(key) === url;
-    this._memoryCache.set(key, url);
-    this._failedUntil.delete(key);
+    const normalized = this.normalizeUrl(url);
+    if (!normalized) return;
+    const unchanged = this._memoryCache.get(key) === normalized;
+    this._memoryCache.set(key, normalized);
+    this._lookupFailedUntil.delete(key);
     if (!unchanged) this._schedulePersist();
-  },
-
-  _rememberFailure(key) {
-    this._failedUntil.set(key, Date.now() + this._failedTtlMs);
-    this._memoryCache.delete(key);
-    this._schedulePersist();
+    if (persist && ref) this._persistCoverUrl(ref, normalized);
   },
 
   placeholderHtml(ref, options = {}) {
@@ -187,6 +268,7 @@ const BookMindCoverImage = {
       data-genre="${this.escape(ref.genre || "Book")}"
       data-isbn="${this.escape(ref.isbn || "")}"
       data-img-class="${this.escape(imgClass)}"
+      ${ref.library_id ? `data-library-id="${this.escape(ref.library_id)}"` : ""}
       ${knownUrl ? `data-cover-url="${this.escape(knownUrl)}"` : ""}>${inner}</div>`;
   },
 
@@ -196,8 +278,9 @@ const BookMindCoverImage = {
     const knownUrl = this.getKnownUrl(ref);
 
     if (knownUrl) {
-      if (!this._memoryCache.has(this.cacheKey(ref))) {
-        this._rememberSuccess(this.cacheKey(ref), knownUrl);
+      const key = this.cacheKey(ref);
+      if (!this._memoryCache.has(key)) {
+        this._rememberSuccess(key, knownUrl, { persist: false, ref });
       }
       return this.wrapHtml(
         `<img class="${imgClass}" data-cover-src="${this.escape(knownUrl)}" alt="${this.escape(ref.title)} cover" loading="lazy" decoding="async">`,
@@ -218,13 +301,30 @@ const BookMindCoverImage = {
 
     const ref = this.refFromWrap(wrap);
     const key = this.cacheKey(ref);
-    this._rememberFailure(key);
-    wrap.dataset.coverResolved = "failed";
+    const failedUrl = this.normalizeUrl(img.dataset.coverSrc || img.src);
+
+    if (failedUrl) {
+      this._rememberBrokenUrl(key, failedUrl);
+      if (ref.cover_url === failedUrl) {
+        ref.cover_url = null;
+        wrap.__bookRef = { ...ref, cover_url: null };
+        delete wrap.dataset.coverUrl;
+      }
+    }
 
     img.remove();
+
     if (!wrap.querySelector(".premium-book-placeholder")) {
       wrap.insertAdjacentHTML("beforeend", this.placeholderHtml(ref));
     }
+
+    if (this._isLookupFailed(key)) {
+      wrap.dataset.coverResolved = "failed";
+      return;
+    }
+
+    wrap.dataset.coverResolved = "retry";
+    this._queueWrap(wrap);
   },
 
   _ensureResolveObserver() {
@@ -285,17 +385,20 @@ const BookMindCoverImage = {
   applyUrlToWrap(wrap, ref, url, imgClass = "book-cover-img") {
     if (!wrap || !url) return;
     const key = this.cacheKey(ref);
-    this._rememberSuccess(key, url);
+    const normalized = this.normalizeUrl(url);
+    if (!normalized || this._isBrokenUrl(key, normalized)) return;
+
+    this._rememberSuccess(key, normalized, { ref });
 
     wrap.innerHTML = "";
     const img = document.createElement("img");
     img.className = imgClass;
-    img.dataset.coverSrc = url;
+    img.dataset.coverSrc = normalized;
     img.alt = `${ref.title} cover`;
     img.loading = "lazy";
     img.decoding = "async";
     wrap.appendChild(img);
-    this.attachRefToWrap(wrap, { ...ref, cover_url: url }, { imgClass });
+    this.attachRefToWrap(wrap, { ...ref, cover_url: normalized }, { imgClass });
     wrap.dataset.coverResolved = "true";
     wrap.classList.add("cover-loaded");
     this._lazyLoadImage(img);
@@ -308,15 +411,63 @@ const BookMindCoverImage = {
   needsResolve(wrap) {
     if (!wrap) return false;
     if (wrap.dataset.coverResolved === "true") return false;
-    if (!this.hasPlaceholder(wrap)) return false;
+    if (wrap.dataset.coverResolved === "failed") return false;
+
     const key = this.cacheKey(this.refFromWrap(wrap));
-    return !this._isFailed(key);
+    if (this._isLookupFailed(key)) return false;
+
+    if (wrap.dataset.coverResolved === "retry") return true;
+    if (!this.hasPlaceholder(wrap)) return false;
+    return true;
   },
 
   _isInViewport(el) {
     if (!el || typeof el.getBoundingClientRect !== "function") return true;
     const rect = el.getBoundingClientRect();
     return rect.bottom >= -160 && rect.top <= window.innerHeight + 160;
+  },
+
+  async _persistCoverUrl(ref, url) {
+    const key = this.cacheKey(ref);
+    if (this._persistedKeys.has(key)) return;
+    this._persistedKeys.add(key);
+
+    const normalized = this.normalizeUrl(url);
+    if (!normalized) return;
+
+    if (ref.library_id && window.BookMindLibrary?._books) {
+      const book = BookMindLibrary._books.find(item => item.library_id === ref.library_id);
+      if (book && book.cover_url !== normalized) {
+        book.cover_url = normalized;
+      }
+    }
+
+    const headers = { "Content-Type": "application/json" };
+    if (window.BookMindAuth?.getAuthHeaders) {
+      Object.assign(headers, BookMindAuth.getAuthHeaders());
+    }
+
+    try {
+      const response = await fetch("/api/library/cover", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          title: ref.title,
+          author: ref.author,
+          cover_url: normalized,
+          library_id: ref.library_id || null,
+          isbn: ref.isbn || null,
+        }),
+      });
+      if (!response.ok) return;
+      const data = await response.json().catch(() => null);
+      if (data?.book?.library_id && window.BookMindLibrary?._books) {
+        const book = BookMindLibrary._books.find(item => item.library_id === data.book.library_id);
+        if (book) book.cover_url = data.book.cover_url || normalized;
+      }
+    } catch {
+      /* best-effort */
+    }
   },
 
   _batchResolveBooks(books) {
@@ -334,7 +485,7 @@ const BookMindCoverImage = {
         return;
       }
 
-      if (this._isFailed(key)) return;
+      if (this._isLookupFailed(key)) return;
       if (this._pending.has(key)) return;
       if (refs.some(item => this.cacheKey(item) === key)) return;
 
@@ -342,7 +493,7 @@ const BookMindCoverImage = {
         title: ref.title,
         author: ref.author,
         isbn: ref.isbn,
-        cover_url: ref.cover_url,
+        cover_url: this._effectiveCoverUrl(ref),
         google_id: ref.google_id,
         open_library_key: ref.open_library_key,
       });
@@ -370,11 +521,11 @@ const BookMindCoverImage = {
           if (!ref) return;
           const key = this.cacheKey(ref);
           const url = this.normalizeUrl(result.cover_url);
-          if (url) {
+          if (url && !this._isBrokenUrl(key, url)) {
             ref.cover_url = url;
-            this._rememberSuccess(key, url);
+            this._rememberSuccess(key, url, { ref });
           } else {
-            this._rememberFailure(key);
+            this._rememberLookupFailure(key);
           }
         });
         return refs;
@@ -431,7 +582,7 @@ const BookMindCoverImage = {
     }
 
     const key = this.cacheKey(ref);
-    if (this._isFailed(key)) return;
+    if (this._isLookupFailed(key)) return;
 
     wrap.dataset.coverLoading = "true";
     this._batchQueue.set(key, wrap);
@@ -504,4 +655,54 @@ const BookMindCoverImage = {
   },
 };
 
+/** Reusable cover component — cover_url → Google Books → placeholder. */
+const BookCover = {
+  html(bookOrProps, options = {}) {
+    const props = bookOrProps || {};
+    const book =
+      props.title !== undefined && !props.ai_recommendation
+        ? {
+            title: props.title,
+            author: props.author,
+            cover_url: props.coverUrl ?? props.cover_url ?? null,
+            genre: props.genre,
+            isbn: props.isbn,
+            library_id: props.libraryId ?? props.library_id ?? null,
+            google_id: props.googleId ?? props.google_id ?? null,
+            open_library_key: props.openLibraryKey ?? props.open_library_key ?? null,
+          }
+        : props;
+    return BookMindCoverImage.html(book, options);
+  },
+
+  hydrate(root, options) {
+    return BookMindCoverImage.hydrate(root, options);
+  },
+
+  hydrateLazy(root, options) {
+    return BookMindCoverImage.hydrateLazy(root, options);
+  },
+
+  hydrateMany(books, root, options) {
+    return BookMindCoverImage.hydrateMany(books, root, options);
+  },
+
+  hydrateWrap(wrap, book, options) {
+    return BookMindCoverImage.hydrateWrap(wrap, book, options);
+  },
+
+  seedFromBooks(books) {
+    return BookMindCoverImage.seedFromBooks(books);
+  },
+
+  onError(img) {
+    return BookMindCoverImage.onError(img);
+  },
+
+  escape(value) {
+    return BookMindCoverImage.escape(value);
+  },
+};
+
 window.BookMindCoverImage = BookMindCoverImage;
+window.BookCover = BookCover;

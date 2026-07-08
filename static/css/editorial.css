@@ -389,6 +389,42 @@ h1, h2, h3, .display-serif {
   margin-bottom: 0;
 }
 
+.ai-pick-cover-slot {
+  width: 88px;
+  flex-shrink: 0;
+}
+
+.ai-pick-cover-wrap {
+  width: 88px;
+  height: 132px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.ai-pick-cover-wrap img,
+.ai-pick-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ai-pick-cover-ph.premium-book-placeholder {
+  width: 88px;
+  height: 132px;
+  font-size: 10px;
+}
+
+.ai-pick-cover-ph .premium-book-title {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.ai-pick-cover-ph .premium-book-author {
+  font-size: 9px;
+}
+
 .ai-pick-card h2 {
   font-size: 1.35rem;
   margin: 0;

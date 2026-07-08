@@ -130,8 +130,8 @@ function renderCover(aiBook, book) {
     open_library_key: book?.open_library_key,
   };
 
-  if (window.BookMindCoverImage) {
-    cover.innerHTML = BookMindCoverImage.html(bookRef, {
+  if (window.BookCover) {
+    cover.innerHTML = BookCover.html(bookRef, {
       imgClass: "bd-cover-img book-cover-img",
       wrapClass: "book-cover-wrap bd-cover-wrap",
       placeholderClass: "bd-cover-fallback book-cover-placeholder",
@@ -139,7 +139,7 @@ function renderCover(aiBook, book) {
     });
     const wrap = cover.querySelector(".book-cover-wrap");
     if (wrap) {
-      BookMindCoverImage.hydrateWrap(wrap, bookRef, { imgClass: "bd-cover-img book-cover-img" }).then(url => {
+      BookCover.hydrateWrap(wrap, bookRef, { imgClass: "bd-cover-img book-cover-img" }).then(url => {
         if (url) bookCover = url;
       });
     }
