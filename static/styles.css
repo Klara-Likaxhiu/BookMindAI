@@ -2183,6 +2183,16 @@ html.auth-pending body {
   overflow: hidden;
 }
 
+.premium-book-title,
+.book-cover-title {
+  color: var(--ink) !important;
+}
+
+.premium-book-author,
+.book-cover-author {
+  color: var(--muted) !important;
+}
+
 .recommendation-cover-wrap.book-cover-wrap,
 .shared-book-cover-wrap.book-cover-wrap {
   width: 150px;

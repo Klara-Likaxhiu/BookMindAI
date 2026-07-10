@@ -111,6 +111,7 @@ function renderBookshelves() {
     if (window.BookCover && books.length) {
       BookCover.seedFromBooks(books);
       BookCover.hydrateLazy(container, { imgClass: "book-cover-img" });
+      BookCover.resolveMissing(books, container, { imgClass: "book-cover-img" });
     }
   });
 }
@@ -266,6 +267,9 @@ function renderShelf(shelf) {
     }));
     BookCover.seedFromBooks(coverBooks);
     BookCover.hydrateLazy(libraryBooks, {
+      imgClass: "shared-book-cover book-cover-img",
+    });
+    BookCover.resolveMissing(coverBooks, libraryBooks, {
       imgClass: "shared-book-cover book-cover-img",
     });
   }

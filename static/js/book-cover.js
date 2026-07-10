@@ -282,12 +282,9 @@ const BookMindCoverImage = {
 
   placeholderHtml(ref, options = {}) {
     const phClass = options.placeholderClass || "book-cover-placeholder";
-    const genre = ref.genre || "Book";
-    const coverClass =
-      typeof BookMindUI !== "undefined" ? BookMindUI.getCoverClass(genre) : "mystery-cover";
 
     return `
-      <div class="${phClass} premium-book-placeholder ${coverClass} book-cover-placeholder" role="img" aria-label="${this.escape(ref.title)} cover" data-cover-fallback="true">
+      <div class="${phClass} premium-book-placeholder book-cover-placeholder" role="img" aria-label="${this.escape(ref.title)} cover" data-cover-fallback="true">
         <div class="premium-book-spine" aria-hidden="true"></div>
         <div class="premium-book-face">
           <span class="premium-book-title book-cover-title">${this.escape(ref.title || "Untitled Book")}</span>
@@ -538,7 +535,7 @@ const BookMindCoverImage = {
     }
   },
 
-  _batchResolveBooks(books) {
+  _batchResolveBooks(books, { force = false } = {}) {
     this._loadCaches();
     const missing = [];
     const refs = [];
@@ -551,7 +548,7 @@ const BookMindCoverImage = {
         ref.cover_url = known;
         return;
       }
-      if (this._isLookupFailed(key)) return;
+      if (!force && this._isLookupFailed(key)) return;
       if (this._pending.has(key)) return;
       if (refs.some(item => this.cacheKey(item) === key)) return;
 
@@ -613,14 +610,14 @@ const BookMindCoverImage = {
     return promise;
   },
 
-  _flushBatchQueue() {
+  _flushBatchQueue(force = false) {
     this._batchTimer = null;
     const wraps = [...this._batchQueue.values()];
     this._batchQueue.clear();
     if (!wraps.length) return;
 
     const refs = wraps.map(wrap => this.refFromWrap(wrap));
-    this._batchResolveBooks(refs)
+    this._batchResolveBooks(refs, { force })
       .then(() => {
         wraps.forEach(wrap => {
           if (!wrap.isConnected) return;
@@ -644,7 +641,7 @@ const BookMindCoverImage = {
       });
   },
 
-  _queueWrap(wrap) {
+  _queueWrap(wrap, { force = false } = {}) {
     if (!wrap) return;
     if (wrap.dataset.coverLoading === "true") return;
 
@@ -657,13 +654,13 @@ const BookMindCoverImage = {
       return;
     }
 
-    if (!this.needsResolve(wrap)) {
+    if (!force && !this.needsResolve(wrap)) {
       this.showPlaceholder(wrap);
       return;
     }
 
     const key = this.cacheKey(ref);
-    if (this._isLookupFailed(key)) {
+    if (!force && this._isLookupFailed(key)) {
       this.showPlaceholder(wrap);
       return;
     }
@@ -671,7 +668,16 @@ const BookMindCoverImage = {
     wrap.dataset.coverLoading = "true";
     this._batchQueue.set(key, wrap);
     clearTimeout(this._batchTimer);
-    this._batchTimer = setTimeout(() => this._flushBatchQueue(), 50);
+    this._batchTimer = setTimeout(() => this._flushBatchQueue(force), 50);
+  },
+
+  async resolveMissing(books, root = document, options = {}) {
+    const refs = (books || []).map(book =>
+      typeof book.title === "string" && !book.ai_recommendation ? this.bookRef(book) : this.bookRef(book)
+    );
+    await this._batchResolveBooks(refs, { force: true });
+    this.hydrateLazy(root, options);
+    return refs;
   },
 
   hydrateLazy(root = document, options = {}) {
@@ -732,13 +738,8 @@ const BookMindCoverImage = {
       return known;
     }
 
-    if (!this.needsResolve(wrap)) {
-      this.showPlaceholder(wrap);
-      return null;
-    }
-
     wrap.dataset.coverLoading = "true";
-    await this._batchResolveBooks([ref]);
+    await this._batchResolveBooks([ref], { force: true });
     const url = this.getKnownUrl(ref);
     wrap.dataset.coverLoading = "false";
 
@@ -790,6 +791,14 @@ const BookCover = {
 
   seedFromBooks(books) {
     return BookMindCoverImage.seedFromBooks(books);
+  },
+
+  resolveMissing(books, root, options) {
+    return BookMindCoverImage.resolveMissing(books, root, options);
+  },
+
+  hydrateEager(books, root, options) {
+    return BookMindCoverImage.resolveMissing(books, root, options);
   },
 
   onError(img) {

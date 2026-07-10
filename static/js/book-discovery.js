@@ -473,6 +473,9 @@ const BookMindDiscovery = {
       BookCover.hydrateLazy(this.els.results, {
         imgClass: "discovery-card-img book-cover-img",
       });
+      BookCover.resolveMissing(books, this.els.results, {
+        imgClass: "discovery-card-img book-cover-img",
+      });
     }
   },
 

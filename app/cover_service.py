@@ -675,8 +675,11 @@ def resolve_cover(
     resolved_isbn = isbn
     save_id = book_id
 
-    # Skip Google / Open Library when a recent automatic lookup already failed.
-    if not is_lookup_blocked(row):
+    # Retry external APIs whenever no cached cover exists, even after a prior failure.
+    cached_cover = normalize_cover_url((row or {}).get("cover_url"))
+    should_lookup_external = not cached_cover or not is_lookup_blocked(row)
+
+    if should_lookup_external:
         # 2. Google Books (title + author, with normalized variants).
         google_url, google_book = _from_google(title, author, google_id)
         google_attempt = google_url

@@ -518,6 +518,7 @@ function hydrateCovers() {
   }));
   BookCover.seedFromBooks(books);
   BookCover.hydrateLazy(feed, { imgClass: "community-cover-img book-cover-img" });
+  BookCover.resolveMissing(books, feed, { imgClass: "community-cover-img book-cover-img" });
 }
 
 function renderSkeleton() {

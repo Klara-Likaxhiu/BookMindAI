@@ -75,6 +75,7 @@ function renderContinueReading() {
 
   if (window.BookCover) {
     BookCover.hydrateLazy(card, { imgClass: "book-cover-img" });
+    BookCover.resolveMissing([book], card, { imgClass: "book-cover-img" });
   }
 }
 
@@ -113,6 +114,7 @@ function renderRecentlyAdded() {
   if (window.BookCover) {
     BookCover.seedFromBooks(books);
     BookCover.hydrateLazy(shelf, { imgClass: "book-cover-img" });
+    BookCover.resolveMissing(books, shelf, { imgClass: "book-cover-img" });
   }
 }
 
@@ -196,6 +198,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     );
     BookCover.hydrateLazy(slot, { imgClass: "ai-pick-cover-img book-cover-img" });
+    BookCover.resolveMissing(
+      [{ title: topPick.title, author: topPick.author, genre: topPick.genre, coverUrl: topPick.cover_url }],
+      slot,
+      { imgClass: "ai-pick-cover-img book-cover-img" }
+    );
   }
 
   function applyIntelligence(intelligence) {
@@ -450,10 +457,42 @@ document.addEventListener("DOMContentLoaded", async () => {
         ...item.book_data,
         genre: item.ai_recommendation?.genre || "BookMindAI",
       }));
+      const coverOptions = { imgClass: "recommendation-cover book-cover-img" };
       BookCover.seedFromBooks(coverBooks);
-      BookCover.hydrateLazy(container, {
-        imgClass: "recommendation-cover book-cover-img",
+      BookCover.hydrateLazy(container, coverOptions);
+      BookCover.resolveMissing(coverBooks, container, coverOptions).then(() => {
+        persistRecommendationCovers(visibleRecommendations, coverBooks);
       });
+    }
+  }
+
+  function persistRecommendationCovers(items, resolvedBooks) {
+    try {
+      const stored = JSON.parse(localStorage.getItem("readerProfile"));
+      if (!stored?.recommendations) return;
+
+      let changed = false;
+      stored.recommendations.forEach(item => {
+        const ai = item.ai_recommendation;
+        if (!ai?.title) return;
+        const match = resolvedBooks.find(
+          book => book.title === ai.title && (book.author || "") === (ai.author || "")
+        );
+        if (!match?.cover_url) return;
+        if (!item.book_data) item.book_data = {};
+        item.book_data.cover_url = match.cover_url;
+        item.book_data.title = ai.title;
+        item.book_data.author = ai.author;
+        item.book_data.genre = ai.genre;
+        ai.cover_url = match.cover_url;
+        changed = true;
+      });
+
+      if (changed) {
+        localStorage.setItem("readerProfile", JSON.stringify(stored));
+      }
+    } catch {
+      /* ignore */
     }
   }
 
