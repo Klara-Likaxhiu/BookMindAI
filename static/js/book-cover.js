@@ -92,6 +92,7 @@ function markBrokenUrl(url) {
   const cache = getBrokenCache();
   cache[normalized] = Date.now();
   saveBrokenCache(cache);
+  console.log("[BookCover cache add]", normalized);
 }
 
 function clearBrokenUrl(url) {
@@ -103,6 +104,7 @@ function clearBrokenUrl(url) {
 
   delete cache[normalized];
   saveBrokenCache(cache);
+  console.log("[BookCover cache remove]", normalized);
 }
 
 function migrateBrokenCache() {
@@ -250,19 +252,71 @@ const BookMindCoverImage = {
       const url = normalizeCoverUrl(ref.cover_url);
       if (!url) return;
       const key = this.cacheKey(ref);
-      if (this._isBrokenUrl(key, url)) return;
-      this._rememberSuccess(key, url, { persist: false });
+      if (!this._memoryCache.has(key)) {
+        this._rememberSuccess(key, url, { persist: false });
+      }
     });
   },
 
+  _logPipeline(book, ref, stage, extra = {}) {
+    const subject = book || ref || {};
+    const rawCover = getBookCover(subject);
+    const normalizedRaw = normalizeCoverUrl(rawCover);
+    const candidateUrl = extra.candidateUrl ?? extra.url ?? normalizedRaw ?? null;
+    const blocked =
+      candidateUrl && ref
+        ? this._isBrokenUrl(this.cacheKey(ref), candidateUrl)
+        : extra.blocked ?? null;
+
+    console.group(`[BookCover] ${subject.title || ref?.title || "Unknown title"} — ${stage}`);
+    console.log("raw book:", subject);
+    console.log("raw cover_url:", rawCover);
+    console.log("normalized raw:", normalizedRaw);
+    console.log("known URL:", extra.knownUrl ?? null);
+    console.log("is cached broken:", blocked);
+    console.log("final candidate URL:", candidateUrl);
+    console.log("render path:", extra.renderPath || "unknown");
+    if (Object.keys(extra).length) console.log("extra:", extra);
+    console.groupEnd();
+  },
+
   getKnownUrl(ref) {
-    this._loadCaches();
-    const key = this.cacheKey(ref);
-    const candidates = [normalizeCoverUrl(ref.cover_url), this._memoryCache.get(key)].filter(Boolean);
-    for (const url of candidates) {
-      if (!this._isBrokenUrl(key, url)) return url;
+    const rawUrl = getBookCover(ref);
+
+    if (!rawUrl || typeof rawUrl !== "string" || this.isMissingCoverUrl(rawUrl)) {
+      this._loadCaches();
+      const cached = this._memoryCache.get(this.cacheKey(ref));
+      if (cached && typeof cached === "string" && !this.isMissingCoverUrl(cached)) {
+        const normalizedCache = cached.trim().replace(/^http:/i, "https:");
+        this._logPipeline(ref, ref, "getKnownUrl", {
+          knownUrl: normalizedCache,
+          candidateUrl: normalizedCache,
+          renderPath: "memory_cache",
+          source: "memory_cache",
+          blocked: false,
+        });
+        return normalizedCache;
+      }
+
+      this._logPipeline(ref, ref, "getKnownUrl", {
+        knownUrl: null,
+        candidateUrl: null,
+        renderPath: "no_candidate",
+        rawUrl,
+        blocked: false,
+      });
+      return null;
     }
-    return null;
+
+    const normalizedUrl = rawUrl.trim().replace(/^http:/i, "https:");
+    this._logPipeline(ref, ref, "getKnownUrl", {
+      knownUrl: normalizedUrl,
+      candidateUrl: normalizedUrl,
+      renderPath: "book_fields",
+      source: "book_fields",
+      blocked: false,
+    });
+    return normalizedUrl;
   },
 
   _rememberSuccess(key, url, options = {}) {
@@ -311,6 +365,10 @@ const BookMindCoverImage = {
       if (!this._memoryCache.has(key)) {
         this._rememberSuccess(key, knownUrl, { persist: false, ref });
       }
+      this._logPipeline(book, ref, "html", {
+        candidateUrl: knownUrl,
+        renderPath: "image",
+      });
       return this.wrapHtml(
         `<img class="${imgClass} book-cover-image" src="${this.escape(knownUrl)}" alt="${this.escape(ref.title)} cover" loading="lazy" decoding="async" onerror="BookCover.onError(this)">`,
         { ...ref, cover_url: knownUrl },
@@ -318,6 +376,10 @@ const BookMindCoverImage = {
       );
     }
 
+    this._logPipeline(book, ref, "html", {
+      candidateUrl: null,
+      renderPath: "placeholder",
+    });
     this._logMissingCover(book, ref, null, "no_known_url_at_render");
     return this.wrapHtml(this.placeholderHtml(ref, options), ref, options);
   },
@@ -342,6 +404,14 @@ const BookMindCoverImage = {
     if (!img.getAttribute("src")) img.setAttribute("src", src);
 
     const onSuccess = () => {
+      console.log("[BookCover load]", {
+        url: src,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        currentSrc: img.currentSrc,
+        complete: img.complete,
+      });
+
       if (!this._isRealCover(img)) {
         markBrokenUrl(src);
         const key = this.cacheKey(ref);
@@ -352,6 +422,13 @@ const BookMindCoverImage = {
         ref.cover_url = null;
         wrap.__bookRef = { ...ref, cover_url: null };
         delete wrap.dataset.coverUrl;
+        this._logPipeline(book || ref, ref, "_activateImage", {
+          candidateUrl: src,
+          renderPath: "placeholder",
+          reason: "tiny_placeholder_image",
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+        });
         this.debugCoverState(book || ref, src, { reason: "tiny_placeholder_image" });
         this.renderPlaceholder(wrap, ref, { imgClass: wrap.dataset.imgClass });
         this._queueResolve(wrap);
@@ -360,10 +437,21 @@ const BookMindCoverImage = {
 
       clearBrokenUrl(src);
       this._markImageSuccess(img, wrap);
+      this._logPipeline(book || ref, ref, "_activateImage", {
+        candidateUrl: src,
+        renderPath: "image",
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+      });
       this.debugCoverState(book || ref, src, { reason: "image_loaded" });
     };
 
-    const onFail = () => {
+    const onFail = (error) => {
+      console.error("[BookCover error]", {
+        url: src,
+        error,
+        currentSrc: img.currentSrc,
+      });
       this.debugCoverState(book || ref, src, { reason: "image_error" });
       this.onError(img, book);
     };
@@ -372,15 +460,19 @@ const BookMindCoverImage = {
     img.onerror = onFail;
     img.classList.add("book-cover-image");
 
-    // Root cause fix: cached images fire onload before handlers if src was set early.
-    if (img.complete) {
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) onSuccess();
-      else onFail();
+    // Cached images may be complete before handlers attach; only act when dimensions are known.
+    if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      onSuccess();
     }
   },
 
   renderPlaceholder(wrap, ref, options = {}) {
     if (!wrap) return;
+    this._logPipeline(ref, ref, "renderPlaceholder", {
+      candidateUrl: null,
+      renderPath: "placeholder",
+      previousResolved: wrap.dataset.coverResolved,
+    });
     wrap.classList.remove("cover-has-image", "cover-loaded");
     wrap.dataset.coverResolved = "placeholder";
     wrap.innerHTML = this.placeholderHtml(ref, options);
@@ -396,15 +488,22 @@ const BookMindCoverImage = {
     const normalized = normalizeCoverUrl(url);
     const key = this.cacheKey(ref);
 
-    if (!normalized || isBrokenUrl(normalized)) {
+    if (!normalized) {
+      this._logPipeline(ref, ref, "renderImage", {
+        candidateUrl: normalized,
+        renderPath: "placeholder",
+        reason: "broken_or_invalid_url",
+      });
       this.renderPlaceholder(wrap, ref, options);
-      this._logMissingCover(ref, ref, normalized, normalized ? "temporarily_blocked_url" : "broken_or_invalid_url");
-      if (normalized && normalizeCoverUrl(ref.cover_url) !== normalized) {
-        this._queueResolve(wrap);
-      }
+      this._logMissingCover(ref, ref, normalized, "broken_or_invalid_url");
       return;
     }
 
+    this._logPipeline(ref, ref, "renderImage", {
+      candidateUrl: normalized,
+      renderPath: "image",
+      inputUrl: url,
+    });
     this._rememberSuccess(key, normalized, { ref });
     wrap.__bookRef = { ...ref, cover_url: normalized };
     wrap.dataset.coverUrl = normalized;
@@ -520,7 +619,7 @@ const BookMindCoverImage = {
           if (!ref) return;
           const key = this.cacheKey(ref);
           const url = normalizeCoverUrl(result.cover_url);
-          if (url && !this._isBrokenUrl(key, url)) {
+          if (url) {
             ref.cover_url = url;
             this._rememberSuccess(key, url, { ref });
             this.debugCoverState(ref, url, {
@@ -632,6 +731,9 @@ const BookMindCoverImage = {
   },
 
   async resolveMissing(books, root = document, options = {}) {
+    this._logPipeline({ title: `batch(${books?.length || 0})` }, null, "resolveMissing:start", {
+      bookTitles: (books || []).map(b => b?.title),
+    });
     await this._batchResolveBooks(books || []);
 
     (books || []).forEach(book => {
@@ -646,7 +748,18 @@ const BookMindCoverImage = {
 
       const key = this.cacheKey(ref);
       const wrap = [...root.querySelectorAll("[data-cover-key]")].find(el => el.dataset.coverKey === key);
-      if (!wrap) return;
+      if (!wrap) {
+        this._logPipeline(book, ref, "resolveMissing", {
+          candidateUrl: url,
+          renderPath: "no_wrap",
+        });
+        return;
+      }
+      this._logPipeline(book, ref, "resolveMissing", {
+        candidateUrl: url,
+        renderPath: url ? "image" : "placeholder",
+        wrapResolved: wrap.dataset.coverResolved,
+      });
       if (url) this.renderImage(wrap, { ...ref, cover_url: url }, url, options);
       else this.renderPlaceholder(wrap, ref, options);
     });
