@@ -55,6 +55,16 @@ function renderAll() {
   if (loading) loading.hidden = true;
 
   renderBookshelves();
+  renderShelf(activeShelf);
+  scheduleLibraryCoverResolve();
+}
+
+function scheduleLibraryCoverResolve() {
+  if (!window.BookCover) return;
+  const library = BookMindLibrary.getLibrary();
+  const allBooks = ["reading", "want", "read"].flatMap(key => (library[key] || []).slice(0, 20));
+  if (!allBooks.length) return;
+  BookCover.resolveMissing(allBooks, document, { imgClass: "book-cover-img" });
 }
 
 function renderBookshelves() {
@@ -107,10 +117,6 @@ function renderBookshelves() {
       document.getElementById("openImportBtn")?.click();
     });
     container.appendChild(addSlot);
-
-    if (window.BookCover && books.length) {
-      BookCover.resolveMissing(books, container, { imgClass: "book-cover-img" });
-    }
   });
 }
 
@@ -253,20 +259,6 @@ function renderShelf(shelf) {
 
     libraryBooks.appendChild(card);
   });
-
-  if (window.BookCover) {
-    const coverBooks = books.map(book => ({
-      title: book.title,
-      author: book.author,
-      genre: book.genre,
-      cover_url: book.cover_url,
-      isbn: book.isbn,
-      library_id: book.library_id,
-    }));
-    BookCover.resolveMissing(coverBooks, libraryBooks, {
-      imgClass: "shared-book-cover book-cover-img",
-    });
-  }
 }
 
 function escapeHtml(value) {

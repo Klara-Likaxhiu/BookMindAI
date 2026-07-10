@@ -125,7 +125,7 @@ def _sniff_image_content_type(data: bytes) -> str | None:
 
 
 def download_image(url: str) -> tuple[bytes, str]:
-    with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+    with httpx.Client(timeout=5.0, follow_redirects=True) as client:
         response = client.get(url)
         if response.status_code >= 400:
             raise SupabaseRestError(

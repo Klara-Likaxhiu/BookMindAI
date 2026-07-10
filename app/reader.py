@@ -156,7 +156,7 @@ def recommend_with_book_data(data: ReaderProfileRequest) -> dict:
             if book.get("title")
         ],
     }
-    enrich_profile_recommendations(profile_payload)
+    enrich_profile_recommendations(profile_payload, cache_only=True)
 
     return {
         "reader_type": profile_payload.get("reader_type"),
@@ -237,7 +237,7 @@ Do not write anything outside the JSON.
 
     from app.cover_service import enrich_books_in_list
 
-    parsed["recommendations"] = enrich_books_in_list(parsed.get("recommendations"))
+    parsed["recommendations"] = enrich_books_in_list(parsed.get("recommendations"), cache_only=True)
 
     parsed["engine"] = ai.engine_name()
     return parsed

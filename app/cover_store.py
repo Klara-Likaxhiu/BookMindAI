@@ -10,6 +10,7 @@ from app.supabase_rest import SupabaseRestError, request
 
 COVERS_TABLE = "book_covers"
 LOOKUP_FAILED_TTL = timedelta(hours=24)
+RESOLVING_STALE_TTL = timedelta(minutes=10)
 
 SOURCE_LABELS = {
     "google_books": "Google Books",
@@ -73,14 +74,28 @@ def _row_to_cached(row: dict[str, Any]) -> dict[str, Any]:
         "isbn": row.get("isbn"),
         "title": row.get("title"),
         "author": row.get("author"),
+        "updated_at": row.get("updated_at"),
     }
 
 
 def _select_fields() -> str:
     return (
         "book_id,cover_url,manual_cover_url,lookup_failed_at,source,"
-        "cover_status,external_source_url,isbn,title,author"
+        "cover_status,external_source_url,isbn,title,author,updated_at"
     )
+
+
+def is_resolving_stale(cached: dict[str, Any] | None) -> bool:
+    """True when a resolving row is old enough to reclaim."""
+    if not cached:
+        return True
+    status = (cached.get("cover_status") or "missing").lower()
+    if status != "resolving":
+        return False
+    updated = _parse_timestamp(cached.get("updated_at"))
+    if not updated:
+        return True
+    return _utcnow() - updated >= RESOLVING_STALE_TTL
 
 
 def is_lookup_blocked(cached: dict[str, Any] | None) -> bool:
@@ -178,6 +193,127 @@ def get_cover_row(
         or get_cached_cover_by_isbn(isbn)
         or get_cached_cover_by_title_author(title, author)
     )
+
+
+def _postgrest_in_filter(values: list[str]) -> str:
+    parts: list[str] = []
+    for value in values:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            continue
+        if any(char in cleaned for char in ',()"'):
+            escaped = cleaned.replace('"', '""')
+            parts.append(f'"{escaped}"')
+        else:
+            parts.append(cleaned)
+    return f"in.({','.join(parts)})"
+
+
+def get_cover_rows_batch(book_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Fetch many cover rows in one query keyed by book_id."""
+    unique_ids = list(dict.fromkeys(bid.strip() for bid in book_ids if bid and bid.strip()))
+    if not unique_ids:
+        return {}
+
+    try:
+        rows = request(
+            "GET",
+            COVERS_TABLE,
+            params={
+                "book_id": _postgrest_in_filter(unique_ids),
+                "select": _select_fields(),
+            },
+        )
+    except Exception:
+        return {}
+
+    if not isinstance(rows, list):
+        return {}
+
+    return {
+        str(row.get("book_id")): _row_to_cached(row)
+        for row in rows
+        if isinstance(row, dict) and row.get("book_id")
+    }
+
+
+def try_claim_cover_resolution(
+    *,
+    book_id: str,
+    title: str,
+    author: str | None,
+    isbn: str | None,
+) -> bool:
+    """Atomically claim cover resolution. True when this worker should resolve."""
+    clean_isbn = _normalize_isbn(isbn) or None
+    base_payload = {
+        "book_id": book_id,
+        "title": title,
+        "author": author or "",
+        "isbn": clean_isbn,
+        "cover_status": "resolving",
+        "source": format_source("resolving"),
+        "updated_at": _utcnow_iso(),
+    }
+
+    row = get_cached_cover(book_id)
+    if row:
+        status = (row.get("cover_status") or "missing").lower()
+        if status == "ready":
+            return False
+        if status == "resolving" and not is_resolving_stale(row):
+            return False
+
+    try:
+        rows = request(
+            "PATCH",
+            COVERS_TABLE,
+            params={
+                "book_id": f"eq.{book_id}",
+                "cover_status": "in.(missing,failed)",
+            },
+            json=base_payload,
+            prefer="return=representation",
+        )
+        if isinstance(rows, list) and rows:
+            return True
+    except Exception:
+        pass
+
+    if row and (row.get("cover_status") or "").lower() == "resolving" and is_resolving_stale(row):
+        try:
+            rows = request(
+                "PATCH",
+                COVERS_TABLE,
+                params={
+                    "book_id": f"eq.{book_id}",
+                    "cover_status": "eq.resolving",
+                },
+                json=base_payload,
+                prefer="return=representation",
+            )
+            if isinstance(rows, list) and rows:
+                return True
+        except Exception:
+            return False
+
+    if row:
+        return False
+
+    try:
+        rows = request(
+            "POST",
+            COVERS_TABLE,
+            params={"on_conflict": "book_id"},
+            json={**base_payload, "cover_url": ""},
+            prefer="resolution=ignore-duplicates,return=representation",
+        )
+        if isinstance(rows, list) and rows:
+            return (rows[0].get("cover_status") or "").lower() == "resolving"
+    except SupabaseRestError:
+        pass
+
+    return False
 
 
 def upsert_hosted_cover(

@@ -202,7 +202,7 @@ async function loadReviews() {
     if (!window.BookMindAPI?.get) {
       throw new Error("BookMindAPI is not loaded.");
     }
-    const data = await BookMindAPI.get("/api/reviews/community?limit=30", { auth: false });
+    const data = await BookMindAPI.get("/api/reviews/community?limit=10", { auth: false });
     state.reviews = data.reviews?.length ? data.reviews : DEMO_REVIEWS;
   } catch {
     state.reviews = DEMO_REVIEWS;

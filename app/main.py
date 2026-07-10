@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -72,6 +73,23 @@ app = FastAPI(
 )
 
 init_db()
+
+@app.middleware("http")
+async def log_request_duration(request, call_next):
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    started_at = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        {
+            "route": request.url.path,
+            "method": request.method,
+            "durationMs": duration_ms,
+            "status": response.status_code,
+        }
+    )
+    return response
 
 app.include_router(auth_router)
 app.include_router(user_router)

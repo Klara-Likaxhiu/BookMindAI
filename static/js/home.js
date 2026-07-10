@@ -129,9 +129,12 @@ function recommendationsSkeleton(count = 3) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  window.BookMindPerf?.startPageLoad?.();
+
   if (window.BookMindAuth?.whenReady) {
     await window.BookMindAuth.whenReady();
   }
+  window.BookMindPerf?.endAuthLoad?.();
 
   const user = window.BookMindAuth?.getCurrentUser();
   const name = user?.username || "Reader";
@@ -149,6 +152,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.BookMindUserData?.hydrate?.().catch(() => {}),
     BookMindLibrary.ensureLoaded().catch(() => {}),
   ]);
+  window.BookMindPerf?.endBooksLoad?.();
 
   let profile = BookMindUI.readStorageJson("readerProfile");
 
@@ -169,6 +173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupMoodAndGoal();
   renderRecommendations(profile);
   loadHomeIntelligence();
+  window.BookMindPerf?.endPageLoad?.();
 
   function renderTopPickCover(topPick) {
     const slot = document.getElementById("topPickCover");
@@ -341,7 +346,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!currentProfile) {
       currentProfile = JSON.parse(localStorage.getItem("readerProfile"));
     }
-    if (!currentProfile) return;
+    if (!currentProfile) {
+      window.BookMindPerf?.endRecommendationsLoad?.();
+      return;
+    }
 
     document.getElementById("readerType").textContent = currentProfile.reader_type || "Not available";
     document.getElementById("readingLevel").textContent =
@@ -351,12 +359,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const container = document.getElementById("recommendations");
     container.innerHTML = "";
 
-    if (!currentProfile.recommendations) return;
+    if (!currentProfile.recommendations) {
+      window.BookMindPerf?.endRecommendationsLoad?.();
+      return;
+    }
 
     const visibleRecommendations = currentProfile.recommendations.filter(item => {
       const rec = item.ai_recommendation || item;
       return !BookMindLibrary.findShelf(rec);
-    });
+    }).slice(0, 6);
 
     if (visibleRecommendations.length === 0) {
       container.innerHTML = `
@@ -369,6 +380,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const generateBtn = document.getElementById("generateMoreBtn");
       if (generateBtn) generateBtn.addEventListener("click", generateMoreRecommendations);
+      window.BookMindPerf?.endRecommendationsLoad?.();
       return;
     }
 
@@ -459,6 +471,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         persistRecommendationCovers(visibleRecommendations, coverBooks);
       });
     }
+    window.BookMindPerf?.endRecommendationsLoad?.();
   }
 
   function persistRecommendationCovers(items, resolvedBooks) {

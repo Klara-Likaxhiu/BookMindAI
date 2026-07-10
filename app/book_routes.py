@@ -334,10 +334,6 @@ def search_books(
     open_lib = search_open_library(q, limit=fetch_limit, mode=mode)
 
     books = dedupe_books(google + open_lib)[:limit]
-    if books:
-        from app.cover_service import upgrade_search_result_covers
-
-        books = upgrade_search_result_covers(books)
     return {"query": q, "mode": mode, "results": books}
 
 
@@ -356,10 +352,6 @@ def google_search_books(
         search_google_books(q, limit=fetch_limit, mode=mode)
         + search_open_library(q, limit=fetch_limit, mode=mode)
     )[:limit]
-    if results:
-        from app.cover_service import upgrade_search_result_covers
-
-        results = upgrade_search_result_covers(results)
     return {"query": q, "mode": mode, "results": results}
 
 
@@ -382,7 +374,7 @@ def book_detail(
 def fetch_google_volume(volume_id: str) -> dict | None:
     url = f"https://www.googleapis.com/books/v1/volumes/{volume_id}"
     try:
-        response = httpx.get(url, timeout=10.0)
+        response = httpx.get(url, timeout=5.0)
     except httpx.HTTPError:
         return None
     if response.status_code != 200:
@@ -401,7 +393,7 @@ def fetch_open_library_detail(work_key: str) -> dict | None:
         url = f"https://openlibrary.org/works/{work_key}.json"
 
     try:
-        response = httpx.get(url, timeout=10.0)
+        response = httpx.get(url, timeout=5.0)
     except httpx.HTTPError:
         return None
     if response.status_code != 200:
@@ -465,7 +457,7 @@ def _fetch_open_library_author_name(author_key: str) -> str | None:
     if not author_key.startswith("/"):
         author_key = f"/authors/{author_key}"
     try:
-        response = httpx.get(f"https://openlibrary.org{author_key}.json", timeout=8.0)
+        response = httpx.get(f"https://openlibrary.org{author_key}.json", timeout=5.0)
     except httpx.HTTPError:
         return None
     if response.status_code != 200:
@@ -517,7 +509,7 @@ def search_google_books(q: str, limit: int = 6, mode: SearchMode = "all") -> lis
     _LAST_GOOGLE_SEARCH_DEBUG["query"] = params["q"]
 
     try:
-        response = httpx.get(url, params=params, timeout=12.0)
+        response = httpx.get(url, params=params, timeout=5.0)
     except httpx.HTTPError as exc:
         _LAST_GOOGLE_SEARCH_DEBUG["status"] = "http_error"
         _LAST_GOOGLE_SEARCH_DEBUG["error"] = str(exc)
@@ -559,7 +551,7 @@ def search_open_library(q: str, limit: int = 12, mode: SearchMode = "all") -> li
     }
 
     try:
-        response = httpx.get(url, params=params, timeout=12.0)
+        response = httpx.get(url, params=params, timeout=5.0)
     except httpx.HTTPError:
         return []
 

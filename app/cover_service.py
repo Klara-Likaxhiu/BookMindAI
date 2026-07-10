@@ -11,6 +11,7 @@ import httpx
 from app.cover_store import (
     format_source,
     get_cover_row,
+    get_cover_rows_batch,
     is_lookup_blocked,
     record_lookup_failure,
     upsert_cover,
@@ -408,13 +409,13 @@ def _cover_url_is_usable(url: str | None) -> bool:
 
 def _url_exists(url: str) -> bool:
     try:
-        response = httpx.head(url, timeout=6.0, follow_redirects=True)
+        response = httpx.head(url, timeout=5.0, follow_redirects=True)
         if 200 <= response.status_code < 400:
             return True
         if response.status_code in {403, 405}:
             response = httpx.get(
                 url,
-                timeout=6.0,
+                timeout=5.0,
                 follow_redirects=True,
                 headers={"Range": "bytes=0-0"},
             )
@@ -955,25 +956,26 @@ def resolve_covers_batch(books: list[dict]) -> list[dict]:
 
 
 def enrich_recommendation(title: str, author: str | None = None, genre: str | None = None) -> dict | None:
-    """Resolve cover and return minimal book_data for AI recommendations."""
-    from app.cover_proxy import resolve_hosted_cover
+    """Return cached hosted cover metadata for AI recommendations (no external resolve)."""
+    from app.cover_storage import is_hosted_cover_url
 
-    resolved = resolve_hosted_cover(title=title, author=author)
-    if resolved.get("cover_url"):
+    book_id = make_book_id(title, author, None)
+    cached = get_cover_row(book_id=book_id, title=title, author=author)
+    auto_url = (cached or {}).get("cover_url")
+    if auto_url and is_hosted_cover_url(auto_url) and (cached or {}).get("cover_status") == "ready":
         return {
             "title": title,
             "author": author or "Unknown Author",
             "genre": genre,
-            "cover_url": resolved["cover_url"],
-            "cover_status": resolved.get("cover_status"),
-            "source": resolved.get("cover_source"),
+            "cover_url": auto_url,
+            "cover_status": "ready",
+            "source": cached.get("source"),
         }
     return None
 
 
-def enrich_book_entry(book: dict) -> dict:
-    """Attach a hosted cover_url to a book dict when possible."""
-    from app.cover_proxy import resolve_hosted_cover
+def enrich_book_entry(book: dict, *, cache_only: bool = True) -> dict:
+    """Attach a cached hosted cover_url when available; never blocks on external resolve."""
     from app.cover_storage import is_hosted_cover_url
 
     if not isinstance(book, dict):
@@ -984,21 +986,41 @@ def enrich_book_entry(book: dict) -> dict:
         return book
 
     if book.get("cover_url") and is_hosted_cover_url(book.get("cover_url")):
+        book["cover_status"] = book.get("cover_status") or "ready"
         return book
 
-    resolved = resolve_hosted_cover(
+    book_id = make_book_id(title, book.get("author"), book.get("isbn"))
+    cached = get_cover_row(
+        book_id=book_id,
+        isbn=book.get("isbn"),
         title=title,
         author=book.get("author"),
-        isbn=book.get("isbn"),
-        google_id=book.get("google_id"),
-        open_library_key=book.get("open_library_key"),
     )
-    if resolved.get("cover_url"):
-        book["cover_url"] = resolved["cover_url"]
-        book["cover_source"] = resolved.get("cover_source")
-        book["cover_status"] = resolved.get("cover_status")
+    auto_url = (cached or {}).get("cover_url")
+    status = (cached or {}).get("cover_status") or "missing"
+    if auto_url and is_hosted_cover_url(auto_url) and status == "ready":
+        book["cover_url"] = auto_url
+        book["cover_source"] = cached.get("source")
+        book["cover_status"] = "ready"
+    else:
+        book["cover_status"] = status
 
     return book
+
+
+def _apply_cached_cover_to_book(book: dict, cached: dict | None) -> None:
+    from app.cover_storage import is_hosted_cover_url
+
+    auto_url = (cached or {}).get("cover_url")
+    status = (cached or {}).get("cover_status") or "missing"
+    if auto_url and is_hosted_cover_url(auto_url) and status == "ready":
+        book["cover_url"] = auto_url
+        book["cover_status"] = "ready"
+        if cached.get("source"):
+            book["cover_source"] = cached.get("source")
+    else:
+        book["cover_url"] = None
+        book["cover_status"] = status
 
 
 def enrich_books_in_list(books: list | None, *, cache_only: bool = False) -> list:
@@ -1011,25 +1033,24 @@ def enrich_books_in_list(books: list | None, *, cache_only: bool = False) -> lis
     if not valid:
         return []
 
+    book_ids = [
+        make_book_id(book.get("title"), book.get("author"), book.get("isbn"))
+        for book in valid
+    ]
+    cached_map = get_cover_rows_batch(book_ids)
+
     needs_resolve: list[dict] = []
-    for book in valid:
+    for book, book_id in zip(valid, book_ids):
         if book.get("cover_url") and is_hosted_cover_url(book.get("cover_url")):
             continue
 
         if cache_only:
-            book_id = make_book_id(book.get("title"), book.get("author"), book.get("isbn"))
-            cached = get_cover_row(
-                book_id=book_id,
-                isbn=book.get("isbn"),
-                title=book.get("title"),
-                author=book.get("author"),
-            )
-            auto_url = (cached or {}).get("cover_url")
-            if auto_url and is_hosted_cover_url(auto_url) and (cached or {}).get("cover_status") == "ready":
-                book["cover_url"] = auto_url
-                book["cover_status"] = "ready"
-            else:
-                book["cover_url"] = None
+            _apply_cached_cover_to_book(book, cached_map.get(book_id))
+            continue
+
+        cached = cached_map.get(book_id)
+        if cached and cached.get("cover_url") and is_hosted_cover_url(cached["cover_url"]):
+            _apply_cached_cover_to_book(book, cached)
             continue
 
         needs_resolve.append(book)
@@ -1070,6 +1091,7 @@ def enrich_profile_recommendations(profile_data: dict | None, *, cache_only: boo
 
     batch_input: list[dict] = []
     targets: list[dict] = []
+    book_ids: list[str] = []
 
     for item in recommendations:
         if not isinstance(item, dict):
@@ -1093,10 +1115,28 @@ def enrich_profile_recommendations(profile_data: dict | None, *, cache_only: boo
 
         author = ai.get("author") if isinstance(ai, dict) else None
         isbn = ai.get("isbn") if isinstance(ai, dict) else None
+        book_id = make_book_id(title, author, isbn)
+        book_ids.append(book_id)
 
         if cache_only:
+            continue
+
+        batch_input.append({"title": title, "author": author, "isbn": isbn})
+        targets.append(item)
+
+    if cache_only:
+        cached_map = get_cover_rows_batch(book_ids)
+        for item in recommendations:
+            if not isinstance(item, dict):
+                continue
+            ai = item.get("ai_recommendation") if isinstance(item.get("ai_recommendation"), dict) else item
+            title = ai.get("title") if isinstance(ai, dict) else None
+            if not title:
+                continue
+            author = ai.get("author") if isinstance(ai, dict) else None
+            isbn = ai.get("isbn") if isinstance(ai, dict) else None
             book_id = make_book_id(title, author, isbn)
-            cached = get_cover_row(book_id=book_id, isbn=isbn, title=title, author=author)
+            cached = cached_map.get(book_id)
             auto_url = (cached or {}).get("cover_url")
             if auto_url and is_hosted_cover_url(auto_url) and (cached or {}).get("cover_status") == "ready":
                 if not isinstance(item.get("book_data"), dict):
@@ -1107,12 +1147,9 @@ def enrich_profile_recommendations(profile_data: dict | None, *, cache_only: boo
                 item["book_data"]["genre"] = ai.get("genre") if isinstance(ai, dict) else None
                 if isinstance(ai, dict):
                     ai["cover_url"] = auto_url
-            continue
+        return profile_data
 
-        batch_input.append({"title": title, "author": author, "isbn": isbn})
-        targets.append(item)
-
-    if cache_only or not batch_input:
+    if not batch_input:
         return profile_data
 
     resolved = resolve_covers_batch(batch_input)

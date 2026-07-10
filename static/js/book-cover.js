@@ -1,5 +1,5 @@
 /** BookMindAI centralized cover component — hosted Supabase URLs only. */
-console.log("BOOK COVER BUILD VERSION: hosted-proxy-v1");
+console.log("BOOK COVER BUILD VERSION: perf-v1");
 
 const HOSTED_COVER_MARKER = "/storage/v1/object/public/book-covers/";
 
@@ -47,6 +47,69 @@ function stripExternalCoverFromBook(book) {
     book.ai_recommendation.cover_url = null;
   }
 }
+
+const COVER_BATCH_SIZE = 8;
+
+const BookMindCoverQueue = {
+  _books: new Map(),
+  _roots: new Map(),
+  _options: {},
+  _scheduled: false,
+  _flushing: false,
+
+  enqueue(books, root = document, options = {}) {
+    (books || []).forEach(book => {
+      BookMindCoverService.registerBook(book);
+      const ref = BookMindCoverImage.bookRef(book);
+      if (BookMindCoverImage.getKnownUrl(book)) return;
+      if ((book.cover_status || "").toLowerCase() === "resolving") return;
+      const key = BookMindCoverImage.cacheKey(ref);
+      this._books.set(key, book);
+      this._roots.set(key, root);
+      this._options = { ...this._options, ...options };
+    });
+    this._schedule();
+  },
+
+  _schedule() {
+    if (this._scheduled || this._flushing) return;
+    this._scheduled = true;
+    const run = () => {
+      this._scheduled = false;
+      this._flush();
+    };
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 2500 });
+    } else {
+      setTimeout(run, 1500);
+    }
+  },
+
+  async _flush() {
+    if (this._flushing || !this._books.size) return;
+    this._flushing = true;
+
+    const entries = [...this._books.entries()];
+    this._books.clear();
+
+    for (let i = 0; i < entries.length; i += COVER_BATCH_SIZE) {
+      const chunk = entries.slice(i, i + COVER_BATCH_SIZE);
+      const books = chunk.map(([, book]) => book);
+      await BookMindCoverImage._batchResolveBooks(books);
+      chunk.forEach(([key, book]) => {
+        const root = this._roots.get(key) || document;
+        BookMindCoverImage._renderBookCover(book, root, this._options);
+      });
+    }
+
+    this._flushing = false;
+    if (this._books.size) {
+      this._schedule();
+    } else {
+      window.BookMindPerf?.endCoversLoad?.();
+    }
+  },
+};
 
 const BookMindCoverService = {
   _bookRegistry: new Map(),
@@ -303,14 +366,14 @@ const BookMindCoverImage = {
 
   _batchResolveBooks(books) {
     const missing = [];
-    const refs = [];
     const sourceBooks = [];
 
     (books || []).forEach(book => {
       BookMindCoverService.registerBook(book);
       const ref = this.bookRef(book);
       if (this.getKnownUrl(book)) return;
-      if (refs.some(item => this.cacheKey(item) === this.cacheKey(ref))) return;
+      if ((book.cover_status || "").toLowerCase() === "resolving") return;
+      if (sourceBooks.some(item => this.cacheKey(this.bookRef(item)) === this.cacheKey(ref))) return;
       missing.push({
         title: ref.title,
         author: ref.author,
@@ -319,13 +382,12 @@ const BookMindCoverImage = {
         google_id: ref.google_id,
         open_library_key: ref.open_library_key,
       });
-      refs.push(ref);
       sourceBooks.push(book);
     });
 
     if (!missing.length) return Promise.resolve(sourceBooks);
 
-    const signature = missing.map(b => `${b.title}|${b.author}`).sort().join(";;");
+    const signature = missing.map(b => `${b.bookId}|${b.title}|${b.author}`).sort().join(";;");
     if (this._pendingBatch.has(signature)) return this._pendingBatch.get(signature);
 
     const promise = fetch("/api/books/resolve-covers", {
@@ -339,9 +401,11 @@ const BookMindCoverImage = {
           const source = sourceBooks[index];
           if (!source) return;
           const url = result?.cover_url;
+          const status = result?.cover_status || (url ? "ready" : "missing");
+          source.cover_status = status;
           if (url && isHostedCoverUrl(url)) {
             applyCoverToBook(source, url, {
-              cover_status: result.cover_status || "ready",
+              cover_status: status,
               cover_source: result.cover_source,
             });
           }
@@ -355,22 +419,31 @@ const BookMindCoverImage = {
     return promise;
   },
 
-  async resolveMissing(books, root = document, options = {}) {
-    await this._batchResolveBooks(books || []);
-
-    (books || []).forEach(book => {
-      BookMindCoverService.registerBook(book);
-      const ref = this.bookRef(book);
-      const url = this.getKnownUrl(book);
-      const key = this.cacheKey(ref);
-      const wrap = [...root.querySelectorAll("[data-cover-key]")].find(el => el.dataset.coverKey === key);
-      if (!wrap) return;
+  _renderBookCover(book, root = document, options = {}) {
+    BookMindCoverService.registerBook(book);
+    const ref = this.bookRef(book);
+    const url = this.getKnownUrl(book);
+    const key = this.cacheKey(ref);
+    const scope = root && typeof root.querySelectorAll === "function" ? root : document;
+    const wraps = [...scope.querySelectorAll("[data-cover-key]")].filter(el => el.dataset.coverKey === key);
+    wraps.forEach(wrap => {
       wrap.__sourceBook = book;
       if (url) this.renderImage(wrap, ref, url, { ...options, book });
+      else if ((book.cover_status || "").toLowerCase() === "resolving") this.renderResolving(wrap, ref, options);
       else this.renderPlaceholder(wrap, ref, options);
     });
+  },
 
-    return books;
+  resolveMissing(books, root = document, options = {}) {
+    (books || []).forEach(book => this._renderBookCover(book, root, options));
+    const needsResolve = (books || []).filter(book => {
+      if (this.getKnownUrl(book)) return false;
+      return (book.cover_status || "").toLowerCase() !== "resolving";
+    });
+    if (needsResolve.length) {
+      BookMindCoverQueue.enqueue(needsResolve, root, options);
+    }
+    return Promise.resolve(books);
   },
 
   hydrateWrap(wrap, book, options = {}) {
