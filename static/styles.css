@@ -166,20 +166,23 @@ button, .btn {
   color: var(--navy);
 }
 
-.brand-icon {
+.landing-page .brand-icon {
   width: 48px;
   height: 48px;
   border-radius: 14px;
   background: var(--deep-green);
-  color: var(--white);
+  color: #fbf8f3;
   display: grid;
   place-items: center;
 }
 
-.brand-icon .feature-svg {
+.landing-page .brand-icon .feature-svg,
+.landing-page .brand-icon .brand-icon-svg {
   width: 24px;
   height: 24px;
-  color: var(--white);
+  color: #fbf8f3 !important;
+  stroke: #fbf8f3 !important;
+  stroke-width: 2;
 }
 
 .nav-links {
@@ -211,7 +214,7 @@ button, .btn {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: 48px;
-  align-items: center;
+  align-items: start;
 }
 
 .hero-text h1 {
@@ -248,39 +251,48 @@ button, .btn {
   flex-wrap: wrap;
 }
 
-.landing-page .hero-cta-primary {
+.landing-page .hero-buttons .btn.hero-cta-primary {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: var(--deep-green);
   color: var(--white);
+  -webkit-text-fill-color: var(--white);
   border-radius: 999px;
-  padding: 15px 28px;
-  box-shadow: 0 12px 28px rgba(18, 79, 66, 0.22);
+  padding: 9px 18px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  font-weight: 600;
+  box-shadow: 0 8px 20px rgba(18, 79, 66, 0.2);
 }
 
-.landing-page .hero-cta-primary:hover {
+.landing-page .hero-buttons .btn.hero-cta-primary:hover {
   background: #0e3f35;
-  box-shadow: 0 16px 32px rgba(18, 79, 66, 0.28);
+  box-shadow: 0 12px 24px rgba(18, 79, 66, 0.26);
 }
 
-.landing-page .hero-cta-secondary {
+.landing-page .hero-buttons .btn.hero-cta-secondary {
   border-radius: 999px;
-  padding: 15px 28px;
+  padding: 9px 18px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  font-weight: 600;
   background: rgba(255, 255, 255, 0.7);
   border: 1.5px solid rgba(16, 43, 67, 0.16);
   color: var(--navy);
+  -webkit-text-fill-color: var(--navy);
 }
 
-.landing-page .hero-cta-secondary:hover {
+.landing-page .hero-buttons .btn.hero-cta-secondary:hover {
   background: var(--white);
   border-color: rgba(16, 43, 67, 0.28);
   color: var(--navy);
+  -webkit-text-fill-color: var(--navy);
 }
 
 .hero-cta-arrow {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 
 .trusted {
@@ -311,10 +323,13 @@ button, .btn {
 
 .hero-art {
   position: relative;
-  min-height: 560px;
+  min-height: 0;
   display: grid;
   place-items: center;
   overflow: visible;
+  align-self: start;
+  margin-top: -48px;
+  transform: translateY(-36px);
 }
 
 .hero-illustration {
@@ -336,6 +351,7 @@ button, .btn {
     order: -1;
     max-width: 480px;
     margin: 0 auto;
+    transform: none;
   }
 
   .hero-text h1 {
@@ -377,8 +393,8 @@ button, .btn {
     align-items: stretch;
   }
 
-  .landing-page .hero-cta-primary,
-  .landing-page .hero-cta-secondary {
+  .landing-page .hero-buttons .btn.hero-cta-primary,
+  .landing-page .hero-buttons .btn.hero-cta-secondary {
     justify-content: center;
   }
 }
