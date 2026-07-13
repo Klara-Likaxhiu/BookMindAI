@@ -29,7 +29,7 @@
         <h1>
           Find books<br>
           that feel like<br>
-          they were <span>written<br>for you.</span>
+          they were <em class="hero-accent">written<br>for you.</em>
         </h1>
 
         <p>
@@ -38,61 +38,34 @@
         </p>
 
         <div class="hero-buttons">
-          <a href="/signup.html" class="btn btn-primary">Get Started</a>
-          <a href="/login.html" class="btn btn-secondary">Log In</a>
+          <a href="/signup.html" class="btn btn-primary hero-cta-primary">
+            Get Started
+            <svg class="hero-cta-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+          <a href="/login.html" class="btn btn-secondary hero-cta-secondary">Log In</a>
         </div>
 
         <div class="trusted">
           <div class="avatars">
-            <div>👩</div>
-            <div>🧑</div>
-            <div>👩‍🦱</div>
+            <div class="avatar avatar-a"></div>
+            <div class="avatar avatar-b"></div>
+            <div class="avatar avatar-c"></div>
           </div>
           <p>Trusted by future readers</p>
         </div>
       </div>
 
-      <div class="hero-art">
-        <div class="arch"></div>
-        <div class="flower left-flower">❀</div>
-        <div class="flower right-flower">✿</div>
-
-        <div class="book-stack">
-
-            <div class="book book1">
-                <div class="book-spine"></div>
-                <div class="book-pages"></div>
-                <div class="book-title">BOOKMIND</div>
-            </div>
-        
-            <div class="book book2">
-                <div class="book-spine"></div>
-                <div class="book-pages"></div>
-                <div class="book-title">MYSTERY</div>
-            </div>
-        
-            <div class="book book3">
-                <div class="book-spine"></div>
-                <div class="book-pages"></div>
-                <div class="book-title">ROMANCE</div>
-            </div>
-        
-            <div class="book book4">
-                <div class="book-spine"></div>
-                <div class="book-pages"></div>
-                <div class="book-title">FANTASY</div>
-            </div>
-        
-            <div class="book book5">
-                <div class="book-spine"></div>
-                <div class="book-pages"></div>
-                <div class="book-title">THRILLER</div>
-            </div>
-        
-        </div>
-
-        <div class="round-table"></div>
-        <div class="fabric"></div>
+      <div class="hero-art" aria-hidden="false">
+        <img
+          class="hero-illustration"
+          src="images/hero-illustration.svg"
+          alt="Open book with genre bars for BookMind, Mystery, Romance, Fantasy, and Thriller under a teal arch with botanical leaves and gold stars"
+          width="560"
+          height="620"
+        >
       </div>
     </section>
 
