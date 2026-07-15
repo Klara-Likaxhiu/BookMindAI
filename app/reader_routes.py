@@ -29,8 +29,97 @@ from app.reading_paths_store import (
 )
 from app.deps import get_verified_user
 from app.user_store import get_intelligence_cache, set_intelligence_cache
+from app.recommendations_store import (
+    books_to_profile_items,
+    get_latest_recommendation_batch,
+    get_recent_recommendation_titles,
+    save_recommendation_batch,
+)
+from app.supabase_rest import SupabaseRestError
 
 router = APIRouter(prefix="/api/reader", tags=["Reader"])
+
+
+DEFAULT_HOME_RECOMMENDATION_QUESTION = (
+    "Recommend exactly 3 books I haven't read yet, based on my Reader DNA, "
+    "favorite genres, ratings, and reviews. Only suggest books that are not "
+    "already in my library."
+)
+
+
+@router.get("/recommendations")
+def get_saved_recommendations(user: dict = Depends(get_verified_user)) -> dict:
+    """Return the user's latest saved recommendation batch (no AI call)."""
+    try:
+        batch = get_latest_recommendation_batch(user["id"])
+    except SupabaseRestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    if not batch:
+        return {
+            "recommendations": [],
+            "items": [],
+            "count": 0,
+            "batch_id": None,
+            "generated_at": None,
+            "expires_at": None,
+            "stale": False,
+        }
+
+    books = batch.get("recommendations") or []
+    return {
+        **batch,
+        "items": books_to_profile_items(books),
+    }
+
+
+@router.post("/recommendations/generate")
+def generate_saved_recommendations(
+    data: ReadingCompanionRequest,
+    user: dict = Depends(get_verified_user),
+) -> dict:
+    """Explicitly generate a new batch of 3 books and persist it."""
+    question = (data.question or "").strip() or DEFAULT_HOME_RECOMMENDATION_QUESTION
+    count = data.recommendation_count or 3
+    if count < 1 or count > 10:
+        raise HTTPException(status_code=400, detail="recommendation_count must be 1–10.")
+
+    try:
+        recent_titles = get_recent_recommendation_titles(user["id"], limit_batches=2)
+    except SupabaseRestError:
+        recent_titles = set()
+
+    result = reading_companion(
+        question=question,
+        reader_profile=data.reader_profile,
+        recommendation_count=count,
+        extra_excluded=recent_titles,
+        max_attempts=2,
+    )
+    books = result.get("recommendations") or []
+    if len(books) < count:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Only generated {len(books)} of {count} recommendations. Please try again.",
+        )
+
+    try:
+        saved = save_recommendation_batch(
+            user["id"],
+            books,
+            source="home",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SupabaseRestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return {
+        **result,
+        **saved,
+        "items": books_to_profile_items(saved.get("recommendations") or []),
+        "recommendations": saved.get("recommendations") or books,
+    }
 
 
 @router.post("/analyze")

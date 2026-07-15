@@ -19,7 +19,7 @@ class ReaderProfileResponse(BaseModel):
 
 
 class ReadingCompanionRequest(BaseModel):
-    question: str
+    question: str = ""
     reader_profile: dict | None = None
     recommendation_count: int | None = Field(
         default=None,

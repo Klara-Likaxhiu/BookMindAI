@@ -187,6 +187,61 @@ def _companion_book_example() -> str:
     }"""
 
 
+def _compact_reader_profile_for_prompt(reader_profile: dict | None) -> dict:
+    """Send only preference signal + exclusions — not the full library payload."""
+    if not isinstance(reader_profile, dict):
+        return {"excluded_books": []}
+
+    nested = reader_profile.get("profile")
+    profile = nested if isinstance(nested, dict) else reader_profile
+
+    excluded = sorted(_collect_excluded_titles(reader_profile))
+    reviews = reader_profile.get("reviews") or []
+    if not isinstance(reviews, list):
+        reviews = []
+    compact_reviews = []
+    for review in reviews[:8]:
+        if not isinstance(review, dict):
+            continue
+        compact_reviews.append(
+            {
+                "title": review.get("title") or review.get("book_title"),
+                "rating": review.get("rating"),
+                "text": (str(review.get("text") or review.get("review") or "")[:160] or None),
+            }
+        )
+
+    quiz = (
+        reader_profile.get("quiz_answers")
+        or reader_profile.get("discovery_answers")
+        or profile.get("quiz_answers")
+        or []
+    )
+    if isinstance(quiz, list):
+        quiz = quiz[:24]
+    else:
+        quiz = []
+
+    favorite = profile.get("favorite_genres") or reader_profile.get("favorite_genres") or []
+    if isinstance(favorite, list):
+        favorite = favorite[:12]
+
+    return {
+        "reader_type": profile.get("reader_type") or reader_profile.get("reader_type"),
+        "favorite_genres": favorite,
+        "confirmed_reading_level": profile.get("confirmed_reading_level")
+        or reader_profile.get("confirmed_reading_level"),
+        "book_preferences": profile.get("book_preferences")
+        or reader_profile.get("book_preferences"),
+        "today_mood": reader_profile.get("today_mood"),
+        "today_goal": reader_profile.get("today_goal"),
+        "quiz_answers": quiz,
+        "reviews": compact_reviews,
+        "excluded_books": excluded[:100],
+        "excluded_count": len(excluded),
+    }
+
+
 def _build_companion_prompt(
     question: str,
     reader_profile: dict | None,
@@ -194,6 +249,7 @@ def _build_companion_prompt(
     recommendation_count: int | None = None,
     already_recommended: list[str] | None = None,
 ) -> str:
+    compact = _compact_reader_profile_for_prompt(reader_profile)
     count_rules = ""
     if recommendation_count and recommendation_count > 0:
         examples = ",\n    ".join([_companion_book_example()] * recommendation_count)
@@ -201,7 +257,7 @@ def _build_companion_prompt(
         count_rules = f"""
 - You MUST return EXACTLY {recommendation_count} books in the recommendations array.
 - recommendations must be a JSON array of {recommendation_count} objects, never a single object.
-- Every book must be unique and must not repeat titles from excluded_books or the user's library."""
+- Every book must be unique and must not appear in excluded_books."""
     else:
         recommendations_schema = f"[\n    {_companion_book_example()}\n  ]"
 
@@ -213,43 +269,31 @@ def _build_companion_prompt(
             else max(1, 3 - len(already_recommended))
         )
         supplement = f"""
-Already recommended in this session (do NOT repeat any of these titles):
+Already recommended (do NOT repeat):
 {json.dumps(already_recommended, ensure_ascii=False)}
-Provide exactly {need} additional unique book(s) that are NOT in that list and NOT in excluded_books."""
+Provide exactly {need} additional unique book(s)."""
 
     return f"""
-You are Lexo, an AI librarian.
+You are Lexo, an AI librarian. Return JSON only.
 
-User Question:
-{question}
+Question: {question}
 {supplement}
-Full Reader Context:
-{reader_profile}
+Reader preferences:
+{json.dumps(compact, ensure_ascii=False)}
 
-Important recommendation rules:
-- Do NOT recommend books listed inside excluded_books.
-- Do NOT recommend books the user already read, is reading, wants to read, or marked not interested.
-- Use discovery answers, extra discovery answers, mood, goal, and library to personalize.
-- Use the reader's star ratings and written reviews (field: reviews): favor books similar to those they rated 4-5 stars or reviewed positively, and avoid the style of books they rated 1-2 stars.
-- Weight favorite genres and Reader DNA heavily, and respect disliked genres.
-- Keep it book-focused, not therapy-focused.
-- Always include at least one book in recommendations when the user asks for a recommendation.
-- Include estimated page count as both "pages" and "page_count" when known.
-- Never claim you found a book unless recommendations contains that book.
+Rules:
+- Never recommend titles in excluded_books.
+- Favor favorite_genres, Reader DNA signals, high-rated reviews; avoid disliked styles.
+- Keep reasons short (1 sentence).
+- Include pages/page_count when known.
 {count_rules}
-
-Respond ONLY in valid JSON.
-
-Use this exact structure:
 
 {{
   "message": "short friendly introduction",
   "mood_detected": "string",
-  "reasoning": ["short reason 1", "short reason 2", "short reason 3"],
+  "reasoning": ["short reason 1", "short reason 2"],
   "recommendations": {recommendations_schema}
 }}
-
-Do not write anything outside the JSON.
 """
 
 
@@ -295,9 +339,13 @@ def _collect_companion_recommendations(
     reader_profile: dict | None,
     *,
     count: int,
-    max_attempts: int = 3,
+    max_attempts: int = 2,
+    extra_excluded: set[str] | None = None,
 ) -> tuple[list[dict], dict]:
     excluded = _collect_excluded_titles(reader_profile)
+    if extra_excluded:
+        excluded |= {t for t in extra_excluded if t}
+
     collected: list[dict] = []
     seen_titles: set[str] = set()
     last_parsed: dict = {}
@@ -307,16 +355,18 @@ def _collect_companion_recommendations(
             break
 
         already = [book.get("title") for book in collected if book.get("title")]
+        # First attempt asks for the full count; follow-ups only fill gaps.
+        request_count = count if not already else count
         parsed = _call_companion_ai(
             question,
             reader_profile,
-            recommendation_count=count,
+            recommendation_count=request_count,
             already_recommended=already or None,
         )
         last_parsed = parsed
 
         batch = _dedupe_recommendations_by_title(
-            _filter_books(parsed.get("recommendations"), excluded)
+            _filter_books(parsed.get("recommendations"), excluded | seen_titles)
         )
         for book in batch:
             key = _normalize_title(book.get("title"))
@@ -458,6 +508,9 @@ def reading_companion(
     question: str,
     reader_profile: dict | None = None,
     recommendation_count: int | None = None,
+    *,
+    extra_excluded: set[str] | None = None,
+    max_attempts: int = 2,
 ) -> dict:
     from app.cover_service import enrich_books_in_list
 
@@ -466,7 +519,10 @@ def reading_companion(
             question,
             reader_profile,
             count=recommendation_count,
+            max_attempts=max_attempts,
+            extra_excluded=extra_excluded,
         )
+        # cache_only: return immediately; client hydrates missing covers async
         enriched = enrich_books_in_list(collected, cache_only=True)
         message = last_parsed.get("message", "I found some ideas for you.")
         reasoning = last_parsed.get("reasoning", [])
@@ -489,6 +545,8 @@ def reading_companion(
     # Companion chat defaults to returning 1–3 usable, non-shelved books.
     # When the model claims a match then we filter it away, retry once.
     excluded = _collect_excluded_titles(reader_profile)
+    if extra_excluded:
+        excluded |= {t for t in extra_excluded if t}
     parsed = _call_companion_ai(question, reader_profile)
     raw_books = _normalize_recommendations(parsed.get("recommendations"))
     filtered = _filter_books(raw_books, excluded)
@@ -503,12 +561,12 @@ def reading_companion(
         filtered = _filter_books(parsed.get("recommendations"), excluded)
 
     if not filtered:
-        # One more attempt with an explicit desired count so the model must return books.
         collected, last_parsed = _collect_companion_recommendations(
             question,
             reader_profile,
             count=3,
             max_attempts=2,
+            extra_excluded=extra_excluded,
         )
         if collected:
             parsed = last_parsed

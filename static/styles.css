@@ -1395,6 +1395,25 @@ html.auth-pending body {
   cursor: default;
 }
 
+.home-recommendations {
+  position: relative;
+}
+
+.recommendation-toast {
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(16, 43, 67, 0.08);
+  color: var(--navy, #102b43);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.recommendation-toast.error {
+  background: rgba(180, 60, 60, 0.12);
+  color: #8a2a2a;
+}
+
 /*library*/
 
 .library-section {

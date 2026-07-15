@@ -218,7 +218,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   updateDNAProgress();
   setupMoodAndGoal();
-  renderRecommendations(profile);
   loadHomeIntelligence();
   window.LexoPerf?.endPageLoad?.();
 
@@ -415,6 +414,64 @@ document.addEventListener("DOMContentLoaded", async () => {
   const RECOMMENDATION_BATCH_SIZE = 3;
   const RECOMMENDATION_QUESTION =
     "Recommend exactly 3 books I haven't read yet, based on my Reader DNA, favorite genres, ratings, and reviews. Only suggest books that are not already in my library.";
+  const RECS_CACHE_KEY = "lexo_recommendations_v1";
+  const LEGACY_RECS_KEYS = [
+    "bookmind_recommendations_v1",
+    "bookmindai_recommendations",
+    "bookmind_recommendations",
+  ];
+
+  let recommendationsGenerateInFlight = false;
+  let currentRecBatchMeta = { batch_id: null, generated_at: null };
+
+  function migrateLegacyRecommendationCache() {
+    try {
+      if (localStorage.getItem(RECS_CACHE_KEY) != null) return;
+      for (const key of LEGACY_RECS_KEYS) {
+        const raw = localStorage.getItem(key);
+        if (raw == null) continue;
+        localStorage.setItem(RECS_CACHE_KEY, raw);
+        localStorage.removeItem(key);
+        return;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readLocalRecommendationCache() {
+    migrateLegacyRecommendationCache();
+    try {
+      const parsed = JSON.parse(localStorage.getItem(RECS_CACHE_KEY) || "null");
+      if (!parsed || !Array.isArray(parsed.items) || !parsed.items.length) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLocalRecommendationCache({ items, batch_id, generated_at, expires_at, stale }) {
+    const payload = {
+      items: items || [],
+      batch_id: batch_id || null,
+      generated_at: generated_at || null,
+      expires_at: expires_at || null,
+      stale: Boolean(stale),
+      saved_at: new Date().toISOString(),
+    };
+    localStorage.setItem(RECS_CACHE_KEY, JSON.stringify(payload));
+
+    // Keep readerProfile.recommendations in sync for older helpers.
+    try {
+      const stored = JSON.parse(localStorage.getItem("readerProfile")) || {};
+      stored.recommendations = payload.items;
+      localStorage.setItem("readerProfile", JSON.stringify(stored));
+      profile = stored;
+    } catch (_) {
+      /* ignore */
+    }
+    return payload;
+  }
 
   function normalizeTitleKey(title) {
     return (title || "").toLowerCase().trim();
@@ -427,11 +484,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         author: book.author,
         genre: book.genre,
         difficulty: book.difficulty || "AI Pick",
-        reason: book.reason,
+        reason: book.reason || book.description || "",
         cover_url: book.cover_url || null,
+        match: book.match_score || book.match || 90,
+        isbn: book.isbn || null,
       },
       book_data: book.cover_url
-        ? { title: book.title, author: book.author, genre: book.genre, cover_url: book.cover_url }
+        ? {
+            title: book.title,
+            author: book.author,
+            genre: book.genre,
+            cover_url: book.cover_url,
+            isbn: book.isbn || null,
+          }
         : null,
     }));
   }
@@ -441,6 +506,51 @@ document.addEventListener("DOMContentLoaded", async () => {
       .filter(book => book?.title)
       .filter(book => !LexoLibrary.findShelf(book))
       .filter(book => !excludeStoredTitles.has(normalizeTitleKey(book.title)));
+  }
+
+  function itemsFromServerPayload(payload) {
+    if (Array.isArray(payload?.items) && payload.items.length) return payload.items;
+    if (Array.isArray(payload?.recommendations) && payload.recommendations.length) {
+      const first = payload.recommendations[0];
+      if (first?.ai_recommendation) return payload.recommendations;
+      return recommendationItemsFromBooks(payload.recommendations);
+    }
+    return [];
+  }
+
+  function setGenerateBusy(isBusy, label) {
+    const refreshBtn = document.getElementById("refreshRecommendationsBtn");
+    if (refreshBtn) {
+      refreshBtn.disabled = isBusy;
+      refreshBtn.textContent = isBusy ? label || "Generating…" : "Refresh";
+    }
+    document.querySelectorAll("#generateMoreBtn, #retryRecommendationsBtn").forEach(btn => {
+      btn.disabled = isBusy;
+      if (isBusy && btn.id === "generateMoreBtn") {
+        btn.dataset.prevLabel = btn.textContent;
+        btn.textContent = label || "Generating…";
+      } else if (!isBusy && btn.dataset.prevLabel) {
+        btn.textContent = btn.dataset.prevLabel;
+        delete btn.dataset.prevLabel;
+      }
+    });
+  }
+
+  function showRecommendationToast(message, isError = false) {
+    let el = document.getElementById("recommendationToast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "recommendationToast";
+      el.className = "recommendation-toast";
+      document.querySelector(".home-recommendations")?.appendChild(el);
+    }
+    el.textContent = message;
+    el.classList.toggle("error", isError);
+    el.hidden = false;
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => {
+      el.hidden = true;
+    }, 4200);
   }
 
   function renderRecommendationsEmptyState({ title, message, buttonLabel = null }) {
@@ -461,6 +571,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderRecommendationsErrorState(message) {
     const container = document.getElementById("recommendations");
     if (!container) return;
+    const hasCards = container.querySelector(".recommendation-card-modern");
+    if (hasCards) {
+      showRecommendationToast(message || "Could not generate new recommendations.", true);
+      return;
+    }
     container.innerHTML = `
       <div class="empty-library card">
         <h2>Couldn't load recommendations.</h2>
@@ -473,11 +588,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  async function renderRecommendations(currentProfile = profile) {
-    if (!currentProfile) {
-      currentProfile = JSON.parse(localStorage.getItem("readerProfile"));
-    }
-    if (!currentProfile) {
+  async function renderRecommendations(items) {
+    const list = Array.isArray(items) ? items : [];
+
+    document.getElementById("readerType").textContent = profile?.reader_type || "Not available";
+    document.getElementById("readingLevel").textContent =
+      profile?.confirmed_reading_level || "Not available";
+    document.getElementById("genres").textContent = (profile?.favorite_genres || []).join(", ");
+
+    if (!profile && list.length === 0) {
       renderRecommendationsEmptyState({
         title: "No reader profile yet.",
         message: "Complete your Reader DNA quiz to get personalized book recommendations.",
@@ -486,16 +605,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    document.getElementById("readerType").textContent = currentProfile.reader_type || "Not available";
-    document.getElementById("readingLevel").textContent =
-      currentProfile.confirmed_reading_level || "Not available";
-    document.getElementById("genres").textContent = (currentProfile.favorite_genres || []).join(", ");
-
-    const rawRecommendations = Array.isArray(currentProfile.recommendations)
-      ? currentProfile.recommendations
-      : [];
-
-    if (rawRecommendations.length === 0) {
+    if (list.length === 0) {
       renderRecommendationsEmptyState({
         title: "You're all caught up.",
         message: "Want Lexo to find more books you haven't read, aren't reading, and haven't marked \"not interested\"?",
@@ -505,12 +615,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const visibleRecommendations = rawRecommendations.filter(item => {
+    const visibleRecommendations = list.filter(item => {
       const rec = item.ai_recommendation || item;
       return !LexoLibrary.findShelf(rec);
     }).slice(0, 6);
 
     const container = document.getElementById("recommendations");
+    if (!container) return;
 
     if (visibleRecommendations.length === 0) {
       renderRecommendationsEmptyState({
@@ -579,7 +690,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           try {
             await LexoLibrary.addBook(aiBook, this.dataset.status);
             profile = JSON.parse(localStorage.getItem("readerProfile"));
-            renderRecommendations(profile);
+            const cache = readLocalRecommendationCache();
+            await renderRecommendations(cache?.items || profile?.recommendations || []);
           } catch {
             /* shelf update failed */
           } finally {
@@ -616,11 +728,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function persistRecommendationCovers(items, resolvedBooks) {
     try {
-      const stored = JSON.parse(localStorage.getItem("readerProfile"));
-      if (!stored?.recommendations) return;
+      const cache = readLocalRecommendationCache();
+      if (!cache?.items?.length) return;
 
       let changed = false;
-      stored.recommendations.forEach(item => {
+      cache.items.forEach(item => {
         const ai = item.ai_recommendation;
         if (!ai?.title) return;
         const match = resolvedBooks.find(
@@ -637,65 +749,128 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       if (changed) {
-        localStorage.setItem("readerProfile", JSON.stringify(stored));
+        writeLocalRecommendationCache(cache);
       }
     } catch {
       /* ignore */
     }
   }
 
-  /**
-   * Fetches exactly RECOMMENDATION_BATCH_SIZE fresh recommendations and replaces
-   * the stored set so the UI always shows a full batch of new books.
-   */
-  async function fetchFreshRecommendations() {
-    const container = document.getElementById("recommendations");
-    const refreshBtn = document.getElementById("refreshRecommendationsBtn");
+  async function loadPersistedRecommendations() {
+    const local = readLocalRecommendationCache();
+    const profileRecs = Array.isArray(profile?.recommendations) ? profile.recommendations : [];
 
-    if (refreshBtn) {
-      refreshBtn.disabled = true;
-      refreshBtn.textContent = "Refreshing…";
+    if (local?.items?.length) {
+      currentRecBatchMeta = {
+        batch_id: local.batch_id || null,
+        generated_at: local.generated_at || null,
+      };
+      await renderRecommendations(local.items);
+    } else if (profileRecs.length) {
+      writeLocalRecommendationCache({ items: profileRecs });
+      await renderRecommendations(profileRecs);
+    } else {
+      await renderRecommendations([]);
     }
-    document.getElementById("generateMoreBtn")?.setAttribute("disabled", "true");
-    document.getElementById("retryRecommendationsBtn")?.setAttribute("disabled", "true");
 
-    if (container) container.innerHTML = recommendationsSkeleton(RECOMMENDATION_BATCH_SIZE);
+    if (!window.LexoAuth?.isLoggedIn?.()) return;
 
     try {
-      const readerContext = await LexoAPI.getReaderContext();
+      const remote = await LexoAPI.get("/api/reader/recommendations");
+      const remoteItems = itemsFromServerPayload(remote);
+      if (!remoteItems.length) return;
 
-      const result = await LexoAPI.post("/api/reader/companion", {
+      const remoteAt = remote.generated_at || "";
+      const localAt = currentRecBatchMeta.generated_at || local?.generated_at || "";
+      const remoteIsNewer =
+        !localAt ||
+        (remoteAt && remoteAt > localAt) ||
+        (remote.batch_id && remote.batch_id !== currentRecBatchMeta.batch_id);
+
+      if (remoteIsNewer || !local?.items?.length) {
+        writeLocalRecommendationCache({
+          items: remoteItems,
+          batch_id: remote.batch_id,
+          generated_at: remote.generated_at,
+          expires_at: remote.expires_at,
+          stale: remote.stale,
+        });
+        currentRecBatchMeta = {
+          batch_id: remote.batch_id || null,
+          generated_at: remote.generated_at || null,
+        };
+        await renderRecommendations(remoteItems);
+      }
+    } catch (_) {
+      /* offline / unauthenticated — keep local cards */
+    }
+  }
+
+  /**
+   * Explicitly generates a new batch of exactly 3 books and persists it.
+   * Keeps existing cards visible while generating.
+   */
+  async function fetchFreshRecommendations() {
+    if (recommendationsGenerateInFlight) return;
+    recommendationsGenerateInFlight = true;
+    setGenerateBusy(true, "Generating…");
+
+    const container = document.getElementById("recommendations");
+    const hadCards = Boolean(container?.querySelector(".recommendation-card-modern"));
+
+    try {
+      if (!window.LexoAuth?.isLoggedIn?.()) {
+        throw new Error("Please log in to generate and save recommendations.");
+      }
+
+      const readerContext = await LexoAPI.getReaderContext();
+      const result = await LexoAPI.post("/api/reader/recommendations/generate", {
         question: RECOMMENDATION_QUESTION,
         reader_profile: readerContext,
         recommendation_count: RECOMMENDATION_BATCH_SIZE,
       });
 
-      const apiBooks = Array.isArray(result?.recommendations) ? result.recommendations : [];
-      const fresh = filterRecommendationsForDisplay(apiBooks).slice(0, RECOMMENDATION_BATCH_SIZE);
+      let items = itemsFromServerPayload(result);
+      if (!items.length) {
+        const apiBooks = Array.isArray(result?.recommendations) ? result.recommendations : [];
+        const fresh = filterRecommendationsForDisplay(apiBooks).slice(0, RECOMMENDATION_BATCH_SIZE);
+        items = recommendationItemsFromBooks(fresh);
+      }
 
-      if (fresh.length < RECOMMENDATION_BATCH_SIZE) {
-        renderRecommendationsErrorState(
-          `Only received ${fresh.length} of ${RECOMMENDATION_BATCH_SIZE} recommendations. Please try again.`
+      if (items.length < RECOMMENDATION_BATCH_SIZE) {
+        throw new Error(
+          `Only received ${items.length} of ${RECOMMENDATION_BATCH_SIZE} recommendations. Please try again.`
         );
-        return;
       }
 
-      const stored = JSON.parse(localStorage.getItem("readerProfile")) || {};
-      stored.recommendations = recommendationItemsFromBooks(fresh);
-      localStorage.setItem("readerProfile", JSON.stringify(stored));
-
-      profile = stored;
-      await renderRecommendations(profile);
+      writeLocalRecommendationCache({
+        items,
+        batch_id: result.batch_id,
+        generated_at: result.generated_at,
+        expires_at: result.expires_at,
+        stale: false,
+      });
+      currentRecBatchMeta = {
+        batch_id: result.batch_id || null,
+        generated_at: result.generated_at || null,
+      };
+      await renderRecommendations(items);
     } catch (error) {
-      renderRecommendationsErrorState(
-        error?.message ? error.message : "Please check your connection and try again."
-      );
-    } finally {
-      const refreshBtnAfter = document.getElementById("refreshRecommendationsBtn");
-      if (refreshBtnAfter) {
-        refreshBtnAfter.disabled = false;
-        refreshBtnAfter.textContent = "Refresh";
+      if (hadCards) {
+        showRecommendationToast(
+          error?.message ? error.message : "Could not generate new recommendations.",
+          true
+        );
+      } else {
+        renderRecommendationsErrorState(
+          error?.message ? error.message : "Please check your connection and try again."
+        );
       }
+    } finally {
+      recommendationsGenerateInFlight = false;
+      setGenerateBusy(false);
     }
   }
+
+  void loadPersistedRecommendations();
 });
