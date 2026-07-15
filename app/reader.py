@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from typing import Any
 
 from app import ai
 from app.book_routes import search_open_library
@@ -887,35 +888,85 @@ def local_fallback_intelligence(
     if goal:
         mission_bits.append(f"work toward {goal}")
     today_mission = (
-        f"{mission_bits[0].capitalize()}" + (f" and {mission_bits[1]}" if len(mission_bits) > 1 else "") + " with a focused reading session."
+        f"{mission_bits[0].capitalize()}"
+        + (f" and {mission_bits[1]}" if len(mission_bits) > 1 else "")
+        + " with a focused reading session."
         if mission_bits
         else "Choose a book that matches your current mood."
     )
 
-    top_pick = {
-        "title": "Ask Lexo for a recommendation",
-        "author": "",
-        "genre": "",
-        "reason": "Generate recommendations or choose a mood to refresh today's AI pick.",
-        "match": 80,
-    }
+    def _book_from_rec_item(item: Any) -> dict[str, Any] | None:
+        if not isinstance(item, dict):
+            return None
+        ai = item.get("ai_recommendation") if isinstance(item.get("ai_recommendation"), dict) else item
+        if not isinstance(ai, dict) or not ai.get("title"):
+            return None
+        title = str(ai.get("title") or "").strip()
+        if not title or title.lower() == "ask lexo for a recommendation":
+            return None
+        cover = None
+        book_data = item.get("book_data")
+        if isinstance(book_data, dict):
+            cover = book_data.get("cover_url")
+        return {
+            "title": title,
+            "author": ai.get("author") or "",
+            "genre": ai.get("genre") or "",
+            "reason": ai.get("reason") or "From your saved Lexo recommendations.",
+            "match": int(ai.get("match") or 90),
+            "cover_url": cover or ai.get("cover_url"),
+        }
 
-    if isinstance(reader_profile, dict):
-        recs = reader_profile.get("recommendations") or []
-        if isinstance(recs, list) and recs:
-            first = recs[0] if isinstance(recs[0], dict) else {}
-            ai = first.get("ai_recommendation") if isinstance(first.get("ai_recommendation"), dict) else first
-            if isinstance(ai, dict) and ai.get("title"):
-                top_pick = {
-                    "title": ai.get("title"),
-                    "author": ai.get("author") or "",
-                    "genre": ai.get("genre") or "",
-                    "reason": ai.get("reason") or "From your saved Lexo recommendations.",
-                    "match": int(ai.get("match") or 90),
-                    "cover_url": (first.get("book_data") or {}).get("cover_url") or ai.get("cover_url"),
-                }
+    top_pick: dict[str, Any] | None = None
+    profile = reader_profile if isinstance(reader_profile, dict) else {}
 
-    lib = library if isinstance(library, dict) else {}
+    # Context blob from frontend nests the saved profile under "profile".
+    nested = profile.get("profile") if isinstance(profile.get("profile"), dict) else {}
+    for source in (
+        profile.get("recommendations"),
+        nested.get("recommendations"),
+        profile.get("profile_data", {}).get("recommendations")
+        if isinstance(profile.get("profile_data"), dict)
+        else None,
+    ):
+        if not isinstance(source, list):
+            continue
+        for item in source:
+            top_pick = _book_from_rec_item(item)
+            if top_pick:
+                break
+        if top_pick:
+            break
+
+    lib = library if isinstance(library, dict) else profile.get("library") if isinstance(profile.get("library"), dict) else {}
+    if top_pick is None and isinstance(lib, dict):
+        reading = lib.get("reading") or []
+        want = lib.get("want") or []
+        candidate = reading[0] if reading else (want[0] if want else None)
+        if isinstance(candidate, dict) and candidate.get("title"):
+            top_pick = {
+                "title": candidate.get("title"),
+                "author": candidate.get("author") or "",
+                "genre": candidate.get("genre") or "",
+                "reason": (
+                    "Continue with the book you already started."
+                    if reading
+                    else "A book waiting on your Want to Read shelf."
+                ),
+                "match": 85,
+                "cover_url": candidate.get("cover_url"),
+            }
+
+    if top_pick is None:
+        top_pick = {
+            "title": "Ask Lexo for a recommendation",
+            "author": "",
+            "genre": "",
+            "reason": "Generate recommendations or choose a mood to refresh today's AI pick.",
+            "match": 80,
+            "placeholder": True,
+        }
+
     return {
         "dashboard": {
             "greeting_subtitle": "Your personalized reading world is ready.",
@@ -926,10 +977,10 @@ def local_fallback_intelligence(
         "journey": {"reader_identity": "", "insights": [], "growth_suggestions": []},
         "achievements": [],
         "stats": {
-            "read_count": len(lib.get("read") or []),
-            "reading_count": len(lib.get("reading") or []),
-            "want_count": len(lib.get("want") or []),
-            "not_interested_count": len(lib.get("not_interested") or []),
+            "read_count": len(lib.get("read") or []) if isinstance(lib, dict) else 0,
+            "reading_count": len(lib.get("reading") or []) if isinstance(lib, dict) else 0,
+            "want_count": len(lib.get("want") or []) if isinstance(lib, dict) else 0,
+            "not_interested_count": len(lib.get("not_interested") or []) if isinstance(lib, dict) else 0,
             "favorite_genre": "",
         },
         "fallback": True,

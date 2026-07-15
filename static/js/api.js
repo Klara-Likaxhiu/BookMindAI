@@ -308,7 +308,14 @@ const LexoAPI = {
         { timeoutMs }
       );
       console.log("[Lexo] Intelligence response", intelligence);
-      this._writeIntelligenceCache(context, intelligence);
+      // Never persist hollow fallbacks as "fresh" intelligence — that traps the dashboard.
+      if (intelligence && !intelligence.fallback) {
+        const pick = intelligence?.dashboard?.top_pick;
+        const title = (pick?.title || "").trim().toLowerCase();
+        if (title && title !== "ask lexo for a recommendation") {
+          this._writeIntelligenceCache(context, intelligence);
+        }
+      }
       return intelligence;
     };
 

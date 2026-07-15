@@ -192,7 +192,11 @@ def reader_intelligence(
             today_goal=data.today_goal,
         )
         logger.info("Mission created for user=%s engine=%s", user.get("id"), result.get("engine"))
-        set_intelligence_cache(user["id"], cache_key, result)
+        if not result.get("fallback"):
+            pick = (result.get("dashboard") or {}).get("top_pick") or {}
+            title = str(pick.get("title") or "").strip().lower()
+            if title and title != "ask lexo for a recommendation":
+                set_intelligence_cache(user["id"], cache_key, result)
         return result
     except Exception as exc:  # noqa: BLE001 — dashboard must never hang
         logger.exception("Intelligence endpoint failed: %s", exc)

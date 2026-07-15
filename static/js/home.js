@@ -266,14 +266,91 @@ document.addEventListener("DOMContentLoaded", () => {
     window.LexoPerf?.endBooksLoad?.();
     profile = LexoUI.readStorageJson("readerProfile") || profile;
     paintLibrarySections();
+    // Library may unlock a continue-reading AI Pick fallback.
+    if (document.querySelector(".home-ai-pick")?.dataset.emptyPick === "true") {
+      applyIntelligence(buildLocalIntelligenceFallback());
+    }
     window.LexoPerf?.endPageLoad?.();
   })();
+
+  function isEmptyTopPick(topPick) {
+    const title = (topPick?.title || "").trim().toLowerCase();
+    return (
+      !title ||
+      title === "ask lexo for a recommendation" ||
+      topPick?.placeholder === true
+    );
+  }
+
+  function extractLocalTopPickBook() {
+    try {
+      const recs = JSON.parse(localStorage.getItem("lexo_recommendations_v1") || "null");
+      const items = Array.isArray(recs?.items) ? recs.items : [];
+      for (const item of items) {
+        const ai = item?.ai_recommendation || item;
+        if (ai?.title && !isEmptyTopPick(ai)) {
+          return {
+            title: ai.title,
+            author: ai.author || "",
+            genre: ai.genre || "",
+            reason: ai.reason || "From your latest Lexo recommendations.",
+            cover_url: item?.book_data?.cover_url || ai.cover_url || null,
+            match: ai.match || 90,
+          };
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    try {
+      const profile = JSON.parse(localStorage.getItem("readerProfile") || "null");
+      const recs = Array.isArray(profile?.recommendations) ? profile.recommendations : [];
+      for (const item of recs) {
+        const ai = item?.ai_recommendation || item;
+        if (ai?.title && !isEmptyTopPick(ai)) {
+          return {
+            title: ai.title,
+            author: ai.author || "",
+            genre: ai.genre || "",
+            reason: ai.reason || "From your Reader DNA recommendations.",
+            cover_url: item?.book_data?.cover_url || ai.cover_url || null,
+            match: ai.match || 88,
+          };
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    try {
+      const library = LexoLibrary?.getLibrary?.() || {};
+      const fromReading = (library.reading || [])[0];
+      const candidate = fromReading || (library.want || [])[0];
+      if (candidate?.title) {
+        return {
+          title: candidate.title,
+          author: candidate.author || "",
+          genre: candidate.genre || "",
+          reason: fromReading
+            ? "Continue with the book you already started."
+            : "A book waiting on your Want to Read shelf.",
+          cover_url: candidate.cover_url || null,
+          match: 85,
+        };
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    return null;
+  }
 
   function renderTopPickCover(topPick) {
     const slot = document.getElementById("topPickCover");
     if (!slot || !window.BookCover) return;
 
-    if (!topPick?.title) {
+    if (isEmptyTopPick(topPick)) {
       slot.innerHTML = "";
       slot.hidden = true;
       return;
@@ -283,7 +360,7 @@ document.addEventListener("DOMContentLoaded", () => {
     slot.innerHTML = BookCover.html(
       {
         title: topPick.title,
-        author: topPick.author,
+        author: topPick.author || "",
         genre: topPick.genre,
         coverUrl: topPick.cover_url,
       },
@@ -306,9 +383,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const topPickTitle = document.getElementById("topPickTitle");
     const topPickReason = document.getElementById("topPickReason");
     const topPickLabel = document.getElementById("topPickLabel");
+    const card = document.querySelector(".home-ai-pick");
 
-    const dashboard = intelligence?.dashboard || {};
-    const topPick = dashboard.top_pick || {};
+    let dashboard = intelligence?.dashboard || {};
+    let topPick = dashboard.top_pick || {};
+
+    if (isEmptyTopPick(topPick) || intelligence?.fallback) {
+      const localBook = extractLocalTopPickBook();
+      if (localBook) {
+        topPick = localBook;
+        dashboard = { ...dashboard, top_pick: localBook };
+      }
+    }
+
+    const empty = isEmptyTopPick(topPick);
+    if (card) card.dataset.emptyPick = empty ? "true" : "false";
 
     if (subtitle) {
       subtitle.textContent = dashboard.greeting_subtitle || "Your personalized reading world is ready.";
@@ -318,16 +407,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (topPickLabel) topPickLabel.textContent = "AI Pick of the Day";
     if (topPickTitle) {
-      topPickTitle.textContent = topPick.title || "Ask Lexo for a recommendation";
+      topPickTitle.textContent = empty ? "Your daily pick is ready when you are" : topPick.title;
     }
     if (topPickReason) {
-      topPickReason.textContent = topPick.reason || "Your AI pick will appear here.";
+      topPickReason.textContent = empty
+        ? "Tap Generate below for personalized books, or pick a mood to refresh today's suggestion."
+        : topPick.reason || "Your AI pick will appear here.";
     }
-    renderTopPickCover(topPick);
+    renderTopPickCover(empty ? null : topPick);
 
     const topPickBtn = document.getElementById("topPickBtn");
     if (topPickBtn) {
+      topPickBtn.textContent = empty ? "Generate recommendations" : "Why this book?";
       topPickBtn.onclick = function () {
+        if (empty) {
+          document.getElementById("refreshRecommendationsBtn")?.click();
+          document.getElementById("recommendations")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
         const item = {
           ai_recommendation: {
             title: topPick.title,
@@ -338,7 +435,6 @@ document.addEventListener("DOMContentLoaded", () => {
           },
           book_data: topPick.cover_url ? { cover_url: topPick.cover_url } : null,
         };
-
         localStorage.setItem("selectedBook", JSON.stringify(item));
         window.location.href = "book-details.html";
       };
@@ -348,28 +444,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function buildLocalIntelligenceFallback() {
     const mood = localStorage.getItem("lexo_today_mood");
     const goal = localStorage.getItem("lexo_today_goal");
-    let topPick = {
+    const localBook = extractLocalTopPickBook();
+    const topPick = localBook || {
       title: "Ask Lexo for a recommendation",
       author: "",
       genre: "",
-      reason: "Choose a mood or generate recommendations to unlock today's AI pick.",
+      reason: "Generate recommendations or choose a mood to refresh today's AI pick.",
+      placeholder: true,
     };
-
-    try {
-      const recs = JSON.parse(localStorage.getItem("lexo_recommendations_v1") || "null");
-      const first = recs?.items?.[0]?.ai_recommendation || recs?.items?.[0];
-      if (first?.title) {
-        topPick = {
-          title: first.title,
-          author: first.author || "",
-          genre: first.genre || "",
-          reason: first.reason || "From your latest Lexo recommendations.",
-          cover_url: recs.items[0]?.book_data?.cover_url || first.cover_url || null,
-        };
-      }
-    } catch (_) {
-      /* ignore */
-    }
 
     const missionParts = [];
     if (mood) missionParts.push(`Match your ${mood} mood`);
@@ -398,21 +480,21 @@ document.addEventListener("DOMContentLoaded", () => {
       profile_completion: localStorage.getItem("reader_profile_completion") || "0",
     };
     const fresh = LexoAPI._readIntelligenceCache?.(contextHint);
-    if (fresh?.dashboard) {
+    if (fresh?.dashboard && !fresh.fallback && !isEmptyTopPick(fresh.dashboard?.top_pick)) {
       console.log("[Lexo] AI Pick: applying fresh cache");
       applyIntelligence(fresh);
       return { source: "cache", payload: fresh };
     }
 
     const stale = LexoAPI._readIntelligenceCache?.(contextHint, { allowStale: true });
-    if (stale?.dashboard) {
+    if (stale?.dashboard && !stale.fallback && !isEmptyTopPick(stale.dashboard?.top_pick)) {
       console.log("[Lexo] AI Pick: applying stale cache, will refresh");
       applyIntelligence(stale);
       return { source: "stale", payload: stale };
     }
 
     const fallback = buildLocalIntelligenceFallback();
-    console.log("[Lexo] AI Pick: applying local fallback (no cache)");
+    console.log("[Lexo] AI Pick: applying local fallback");
     applyIntelligence(fallback);
     return { source: "fallback", payload: fallback };
   }
@@ -423,13 +505,11 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[Lexo] Loading AI Pick…", { force });
     const painted = paintIntelligenceNow();
 
-    // Unauthenticated: keep fallback / cache only.
     if (!window.LexoAuth?.isLoggedIn?.()) {
       updateDNAProgress();
       return;
     }
 
-    // Fresh matching cache: skip network on normal open.
     if (!force && painted.source === "cache") {
       updateDNAProgress();
       return;
@@ -447,9 +527,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (intelligence?.dashboard) applyIntelligence(intelligence);
       } catch (err) {
         console.error("[Lexo] AI Pick / mission failed", err);
-        if (!painted.payload?.dashboard) {
-          applyIntelligence(buildLocalIntelligenceFallback());
-        }
+        applyIntelligence(buildLocalIntelligenceFallback());
       } finally {
         intelligenceInFlight = null;
         updateDNAProgress();
@@ -606,6 +684,20 @@ document.addEventListener("DOMContentLoaded", () => {
       stored.recommendations = payload.items;
       localStorage.setItem("readerProfile", JSON.stringify(stored));
       profile = stored;
+    } catch (_) {
+      /* ignore */
+    }
+
+    // Refresh AI Pick once we have real recommendation books.
+    try {
+      const title = document.getElementById("topPickTitle")?.textContent || "";
+      if (
+        payload.items.length &&
+        (document.querySelector(".home-ai-pick")?.dataset.emptyPick === "true" ||
+          /ready when you are|ask lexo/i.test(title))
+      ) {
+        applyIntelligence(buildLocalIntelligenceFallback());
+      }
     } catch (_) {
       /* ignore */
     }
