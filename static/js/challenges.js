@@ -230,8 +230,6 @@ const SECRET_MISSION = {
 };
 
 function updateSecretMission(level) {
-  console.log("[challenges] updateSecretMission: readerLevel =", level, "unlockLevel =", SECRET_MISSION.unlockLevel);
-
   const card = document.getElementById("secretMissionCard");
   const icon = document.getElementById("secretMissionIcon");
   const title = document.getElementById("secretMissionTitle");
@@ -280,7 +278,6 @@ function computeReaderLevel(stats) {
 
 function updateLevelHero(stats) {
   const { level, totalXp } = computeReaderLevel(stats);
-  console.log("[challenges] updateLevelHero: readerLevel =", level, "totalXp =", totalXp);
 
   const xpPct = stats.goals.yearly
     ? Math.min(100, Math.round((stats.booksThisYear / stats.goals.yearly) * 100))

@@ -100,13 +100,183 @@ def _collect_excluded_titles(reader_profile, library=None) -> set[str]:
 
 
 def _filter_books(books, excluded: set[str]) -> list:
-    if not isinstance(books, list):
+    normalized = _normalize_recommendations(books)
+    return [
+        book
+        for book in normalized
+        if _normalize_title(book.get("title")) not in excluded
+    ]
+
+
+def _normalize_recommendations(raw) -> list[dict]:
+    """Coerce AI output into a list of book dicts (handles a single object)."""
+    if isinstance(raw, dict):
+        return [raw] if str(raw.get("title") or "").strip() else []
+    if not isinstance(raw, list):
         return []
     return [
         book
-        for book in books
-        if isinstance(book, dict) and _normalize_title(book.get("title")) not in excluded
+        for book in raw
+        if isinstance(book, dict) and str(book.get("title") or "").strip()
     ]
+
+
+def _dedupe_recommendations_by_title(books: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for book in books:
+        key = _normalize_title(book.get("title"))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(book)
+    return unique
+
+
+def _companion_book_example() -> str:
+    return """{
+      "title": "string",
+      "author": "string",
+      "genre": "string",
+      "reason": "why it matches",
+      "match": 97
+    }"""
+
+
+def _build_companion_prompt(
+    question: str,
+    reader_profile: dict | None,
+    *,
+    recommendation_count: int | None = None,
+    already_recommended: list[str] | None = None,
+) -> str:
+    count_rules = ""
+    if recommendation_count and recommendation_count > 0:
+        examples = ",\n    ".join([_companion_book_example()] * recommendation_count)
+        recommendations_schema = f"[\n    {examples}\n  ]"
+        count_rules = f"""
+- You MUST return EXACTLY {recommendation_count} books in the recommendations array.
+- recommendations must be a JSON array of {recommendation_count} objects, never a single object.
+- Every book must be unique and must not repeat titles from excluded_books or the user's library."""
+    else:
+        recommendations_schema = f"[\n    {_companion_book_example()}\n  ]"
+
+    supplement = ""
+    if already_recommended:
+        need = max(0, (recommendation_count or 0) - len(already_recommended))
+        supplement = f"""
+Already recommended in this session (do NOT repeat any of these titles):
+{json.dumps(already_recommended, ensure_ascii=False)}
+Provide exactly {need} additional unique book(s) to complete the set."""
+
+    return f"""
+You are Lexo, an AI librarian.
+
+User Question:
+{question}
+{supplement}
+Full Reader Context:
+{reader_profile}
+
+Important recommendation rules:
+- Do NOT recommend books listed inside excluded_books.
+- Do NOT recommend books the user already read, is reading, wants to read, or marked not interested.
+- Use discovery answers, extra discovery answers, mood, goal, and library to personalize.
+- Use the reader's star ratings and written reviews (field: reviews): favor books similar to those they rated 4-5 stars or reviewed positively, and avoid the style of books they rated 1-2 stars.
+- Weight favorite genres and Reader DNA heavily, and respect disliked genres.
+- Keep it book-focused, not therapy-focused.
+{count_rules}
+
+Respond ONLY in valid JSON.
+
+Use this exact structure:
+
+{{
+  "message": "short friendly introduction",
+  "mood_detected": "string",
+  "reasoning": ["short reason 1", "short reason 2", "short reason 3"],
+  "recommendations": {recommendations_schema}
+}}
+
+Do not write anything outside the JSON.
+"""
+
+
+def _call_companion_ai(
+    question: str,
+    reader_profile: dict | None,
+    *,
+    recommendation_count: int | None = None,
+    already_recommended: list[str] | None = None,
+) -> dict:
+    prompt = _build_companion_prompt(
+        question,
+        reader_profile,
+        recommendation_count=recommendation_count,
+        already_recommended=already_recommended,
+    )
+    result = ai._openai_chat_completion(
+        [
+            {
+                "role": "system",
+                "content": "You are Lexo, an AI librarian. Always return valid JSON only.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        temperature=0.6,
+    )
+    return _safe_json_loads(
+        result,
+        {
+            "message": "I found some ideas for you.",
+            "mood_detected": "Unknown",
+            "reasoning": [],
+            "recommendations": [],
+        },
+    )
+
+
+def _collect_companion_recommendations(
+    question: str,
+    reader_profile: dict | None,
+    *,
+    count: int,
+    max_attempts: int = 3,
+) -> tuple[list[dict], dict]:
+    excluded = _collect_excluded_titles(reader_profile)
+    collected: list[dict] = []
+    seen_titles: set[str] = set()
+    last_parsed: dict = {}
+
+    for _attempt in range(max_attempts):
+        if len(collected) >= count:
+            break
+
+        already = [book.get("title") for book in collected if book.get("title")]
+        parsed = _call_companion_ai(
+            question,
+            reader_profile,
+            recommendation_count=count,
+            already_recommended=already or None,
+        )
+        last_parsed = parsed
+
+        batch = _dedupe_recommendations_by_title(
+            _filter_books(parsed.get("recommendations"), excluded)
+        )
+        for book in batch:
+            key = _normalize_title(book.get("title"))
+            if not key or key in seen_titles:
+                continue
+            seen_titles.add(key)
+            collected.append(book)
+            if len(collected) >= count:
+                break
+
+    return collected[:count], last_parsed
 
 
 def _apply_intelligence_exclusions(parsed: dict, excluded: set[str]) -> None:
@@ -233,77 +403,34 @@ def recommend_with_book_data(data: ReaderProfileRequest, *, user_id: str | None 
     return result
 
 
-def reading_companion(question: str, reader_profile: dict | None = None) -> dict:
-    prompt = f"""
-You are Lexo, an AI librarian.
-
-User Question:
-{question}
-
-Full Reader Context:
-{reader_profile}
-
-Important recommendation rules:
-- Do NOT recommend books listed inside excluded_books.
-- Do NOT recommend books the user already read, is reading, wants to read, or marked not interested.
-- Use discovery answers, extra discovery answers, mood, goal, and library to personalize.
-- Use the reader's star ratings and written reviews (field: reviews): favor books similar to those they rated 4-5 stars or reviewed positively, and avoid the style of books they rated 1-2 stars.
-- Weight favorite genres and Reader DNA heavily, and respect disliked genres.
-- Keep it book-focused, not therapy-focused.
-
-Respond ONLY in valid JSON.
-
-Use this exact structure:
-
-{{
-  "message": "short friendly introduction",
-  "mood_detected": "string",
-  "reasoning": ["short reason 1", "short reason 2", "short reason 3"],
-  "recommendations": [
-    {{
-      "title": "string",
-      "author": "string",
-      "genre": "string",
-      "reason": "why it matches",
-      "match": 97
-    }}
-  ]
-}}
-
-Do not write anything outside the JSON.
-"""
-
-    result = ai._openai_chat_completion(
-        [
-            {
-                "role": "system",
-                "content": "You are Lexo, an AI librarian. Always return valid JSON only.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.6,
-    )
-
-    parsed = _safe_json_loads(
-        result,
-        {
-            "message": "I found some ideas for you.",
-            "mood_detected": "Unknown",
-            "reasoning": [],
-            "recommendations": [],
-        },
-    )
-
-    excluded = _collect_excluded_titles(reader_profile)
-    parsed["recommendations"] = _filter_books(parsed.get("recommendations", []), excluded)
-
+def reading_companion(
+    question: str,
+    reader_profile: dict | None = None,
+    recommendation_count: int | None = None,
+) -> dict:
     from app.cover_service import enrich_books_in_list
 
-    parsed["recommendations"] = enrich_books_in_list(parsed.get("recommendations"), cache_only=True)
+    if recommendation_count and recommendation_count > 0:
+        collected, last_parsed = _collect_companion_recommendations(
+            question,
+            reader_profile,
+            count=recommendation_count,
+        )
+        enriched = enrich_books_in_list(collected, cache_only=True)
+        return {
+            "message": last_parsed.get("message", "I found some ideas for you."),
+            "mood_detected": last_parsed.get("mood_detected", "Unknown"),
+            "reasoning": last_parsed.get("reasoning", []),
+            "recommendations": enriched,
+            "engine": ai.engine_name(),
+            "requested_count": recommendation_count,
+            "returned_count": len(enriched),
+        }
 
+    parsed = _call_companion_ai(question, reader_profile)
+    excluded = _collect_excluded_titles(reader_profile)
+    parsed["recommendations"] = _filter_books(parsed.get("recommendations", []), excluded)
+    parsed["recommendations"] = enrich_books_in_list(parsed.get("recommendations"), cache_only=True)
     parsed["engine"] = ai.engine_name()
     return parsed
 

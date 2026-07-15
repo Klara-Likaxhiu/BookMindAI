@@ -176,7 +176,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.LexoPerf?.endPageLoad?.();
 
   document.getElementById("refreshRecommendationsBtn")?.addEventListener("click", () => {
-    fetchFreshRecommendations({ mode: "replace" });
+    fetchFreshRecommendations();
   });
 
   document.addEventListener("lexo:library-changed", event => {
@@ -352,8 +352,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  const RECOMMENDATION_BATCH_SIZE = 3;
+  const RECOMMENDATION_QUESTION =
+    "Recommend exactly 3 books I haven't read yet, based on my Reader DNA, favorite genres, ratings, and reviews. Only suggest books that are not already in my library.";
+
   function normalizeTitleKey(title) {
     return (title || "").toLowerCase().trim();
+  }
+
+  function recommendationItemsFromBooks(books) {
+    return books.map(book => ({
+      ai_recommendation: {
+        title: book.title,
+        author: book.author,
+        genre: book.genre,
+        difficulty: book.difficulty || "AI Pick",
+        reason: book.reason,
+        cover_url: book.cover_url || null,
+      },
+      book_data: book.cover_url
+        ? { title: book.title, author: book.author, genre: book.genre, cover_url: book.cover_url }
+        : null,
+    }));
+  }
+
+  function filterRecommendationsForDisplay(books, { excludeStoredTitles = new Set() } = {}) {
+    return books
+      .filter(book => book?.title)
+      .filter(book => !LexoLibrary.findShelf(book))
+      .filter(book => !excludeStoredTitles.has(normalizeTitleKey(book.title)));
   }
 
   function renderRecommendationsEmptyState({ title, message, buttonLabel = null }) {
@@ -367,7 +394,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
     `;
     document.getElementById("generateMoreBtn")?.addEventListener("click", () => {
-      fetchFreshRecommendations({ mode: "append" });
+      fetchFreshRecommendations();
     });
   }
 
@@ -382,7 +409,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
     `;
     document.getElementById("retryRecommendationsBtn")?.addEventListener("click", () => {
-      fetchFreshRecommendations({ mode: "append" });
+      fetchFreshRecommendations();
     });
   }
 
@@ -407,7 +434,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const rawRecommendations = Array.isArray(currentProfile.recommendations)
       ? currentProfile.recommendations
       : [];
-    console.log("[home] renderRecommendations: stored recommendations =", rawRecommendations.length);
 
     if (rawRecommendations.length === 0) {
       renderRecommendationsEmptyState({
@@ -423,7 +449,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       const rec = item.ai_recommendation || item;
       return !LexoLibrary.findShelf(rec);
     }).slice(0, 6);
-    console.log("[home] renderRecommendations: visible after excluding already-shelved books =", visibleRecommendations.length);
 
     const container = document.getElementById("recommendations");
 
@@ -560,11 +585,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /**
-   * Fetches fresh recommendations from the AI companion endpoint.
-   * mode "append": keep existing visible recommendations and add new ones (empty-state CTA).
-   * mode "replace": discard stored recommendations and fetch an entirely new set (Refresh button).
+   * Fetches exactly RECOMMENDATION_BATCH_SIZE fresh recommendations and replaces
+   * the stored set so the UI always shows a full batch of new books.
    */
-  async function fetchFreshRecommendations({ mode = "append" } = {}) {
+  async function fetchFreshRecommendations() {
     const container = document.getElementById("recommendations");
     const refreshBtn = document.getElementById("refreshRecommendationsBtn");
 
@@ -575,66 +599,34 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("generateMoreBtn")?.setAttribute("disabled", "true");
     document.getElementById("retryRecommendationsBtn")?.setAttribute("disabled", "true");
 
-    if (container) container.innerHTML = recommendationsSkeleton(3);
+    if (container) container.innerHTML = recommendationsSkeleton(RECOMMENDATION_BATCH_SIZE);
 
     try {
       const readerContext = await LexoAPI.getReaderContext();
-      console.log("[home] fetchFreshRecommendations: requesting /api/reader/companion", {
-        mode,
-        hasAuthToken: Boolean(window.LexoAuth?.getAccessToken?.()),
-        excludedCount: (readerContext.excluded_books || []).length,
-      });
 
       const result = await LexoAPI.post("/api/reader/companion", {
-        question:
-          "Recommend 3 books I haven't read yet, based on my Reader DNA, favorite genres, ratings, and reviews. Only suggest books that are not already in my library.",
+        question: RECOMMENDATION_QUESTION,
         reader_profile: readerContext,
+        recommendation_count: RECOMMENDATION_BATCH_SIZE,
       });
 
-      console.log("[home] fetchFreshRecommendations: response recommendations =", (result?.recommendations || []).length);
+      const apiBooks = Array.isArray(result?.recommendations) ? result.recommendations : [];
+      const fresh = filterRecommendationsForDisplay(apiBooks).slice(0, RECOMMENDATION_BATCH_SIZE);
 
-      const stored = JSON.parse(localStorage.getItem("readerProfile")) || {};
-      const existing = mode === "replace" ? [] : Array.isArray(stored.recommendations) ? stored.recommendations : [];
-      const existingTitles = new Set(
-        existing.map(item => normalizeTitleKey((item.ai_recommendation || item).title))
-      );
-
-      const fresh = (result.recommendations || [])
-        .filter(book => book?.title)
-        .filter(book => !LexoLibrary.findShelf(book))
-        .filter(book => !existingTitles.has(normalizeTitleKey(book.title)))
-        .slice(0, 3);
-
-      if (fresh.length === 0) {
-        renderRecommendationsEmptyState({
-          title: "No new books right now.",
-          message: "Add a few ratings or reviews, or ask the AI Companion for ideas, then try again.",
-          buttonLabel: "Try again",
-        });
+      if (fresh.length < RECOMMENDATION_BATCH_SIZE) {
+        renderRecommendationsErrorState(
+          `Only received ${fresh.length} of ${RECOMMENDATION_BATCH_SIZE} recommendations. Please try again.`
+        );
         return;
       }
 
-      const newItems = fresh.map(book => ({
-        ai_recommendation: {
-          title: book.title,
-          author: book.author,
-          genre: book.genre,
-          difficulty: book.difficulty || "AI Pick",
-          reason: book.reason,
-          cover_url: book.cover_url || null,
-        },
-        book_data: book.cover_url
-          ? { title: book.title, author: book.author, genre: book.genre, cover_url: book.cover_url }
-          : null,
-      }));
-
-      stored.recommendations = [...existing, ...newItems];
+      const stored = JSON.parse(localStorage.getItem("readerProfile")) || {};
+      stored.recommendations = recommendationItemsFromBooks(fresh);
       localStorage.setItem("readerProfile", JSON.stringify(stored));
 
       profile = stored;
       await renderRecommendations(profile);
     } catch (error) {
-      console.error("[home] fetchFreshRecommendations failed:", error);
       renderRecommendationsErrorState(
         error?.message ? error.message : "Please check your connection and try again."
       );

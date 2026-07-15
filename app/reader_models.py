@@ -21,6 +21,12 @@ class ReaderProfileResponse(BaseModel):
 class ReadingCompanionRequest(BaseModel):
     question: str
     reader_profile: dict | None = None
+    recommendation_count: int | None = Field(
+        default=None,
+        ge=1,
+        le=10,
+        description="When set, the API returns exactly this many unique recommendations (with retries).",
+    )
 
 
 class ReadingPathsRequest(BaseModel):

@@ -60,6 +60,7 @@ def companion(data: ReadingCompanionRequest) -> dict:
     return reading_companion(
         question=data.question,
         reader_profile=data.reader_profile,
+        recommendation_count=data.recommendation_count,
     )
 
 
