@@ -148,11 +148,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function findTopGenre(books) {
-    const counts = {};
-    books.forEach(book => {
-      const genre = book.genre || "Unknown";
-      counts[genre] = (counts[genre] || 0) + 1;
-    });
+    const counts = countRealGenres(books);
     let top = null;
     let max = 0;
     Object.keys(counts).forEach(genre => {
@@ -164,7 +160,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     return top;
   }
 
-  const topGenre = findTopGenre(allBooks);
+  const readBooks = allBooks.filter(b => b.status === "read" || (b.progress || 0) >= 100);
+  const topGenre = findTopGenre(readBooks.length ? readBooks : allBooks);
   document.getElementById("topGenre").textContent = topGenre || "Not enough data";
 
   const insightList = document.getElementById("insightList");
@@ -212,7 +209,7 @@ function computeStreak(activity) {
 
 function populateWrappedStats(books, profile) {
   const read = books.filter(b => b.status === "read" || (b.progress || 0) >= 100);
-  const genres = new Set(books.map(b => b.genre).filter(Boolean));
+  const genres = new Set(Object.keys(countRealGenres(read)));
 
   let pages = 0;
   books.forEach(b => {
@@ -244,7 +241,7 @@ function populateWrappedStats(books, profile) {
   }
 
   drawJourneyChart(read);
-  renderGenreLegend(books);
+  renderGenreLegend(read);
 }
 
 function drawJourneyChart(finishedBooks) {
@@ -280,16 +277,62 @@ function drawJourneyChart(finishedBooks) {
   });
 }
 
+/** Placeholder labels used when a real genre was never set — never show these in Top Genres. */
+const INVALID_GENRES = new Set([
+  "book",
+  "books",
+  "unknown",
+  "other",
+  "n/a",
+  "na",
+  "none",
+  "null",
+  "undefined",
+  "general",
+  "unspecified",
+]);
+
+function resolveBookGenre(book) {
+  const candidates = [
+    book?.genre,
+    book?.category,
+    ...(Array.isArray(book?.categories) ? book.categories : []),
+    book?.metadata?.genre,
+    ...(Array.isArray(book?.metadata?.categories) ? book.metadata.categories : []),
+  ];
+
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    const genre = String(raw).trim();
+    if (!genre) continue;
+    if (INVALID_GENRES.has(genre.toLowerCase())) continue;
+    // Skip Google Books style junk like "Fiction / Book"
+    if (/^fiction\s*\/\s*book$/i.test(genre)) continue;
+    return genre;
+  }
+  return null;
+}
+
+function countRealGenres(books) {
+  const counts = {};
+  (books || []).forEach(book => {
+    const genre = resolveBookGenre(book);
+    if (!genre) return;
+    counts[genre] = (counts[genre] || 0) + 1;
+  });
+  return counts;
+}
+
 function renderGenreLegend(books) {
   const legend = document.getElementById("genreLegend");
   if (!legend) return;
-  const counts = {};
-  books.forEach(b => {
-    const g = b.genre || "Other";
-    counts[g] = (counts[g] || 0) + 1;
-  });
+  const counts = countRealGenres(books);
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const colors = ["#2F4A3A", "#C4A24A", "#A9C8E8", "#EDE8DF"];
+  if (!sorted.length) {
+    legend.innerHTML = `<div class="journey-legend-item">No genres yet — finish books with a genre to see them here.</div>`;
+    return;
+  }
   legend.innerHTML = sorted
     .map(
       ([genre, count], i) => `
