@@ -174,52 +174,59 @@ function recommendationsSkeleton(count = 3) {
   `).join("");
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
   window.LexoPerf?.startPageLoad?.();
 
-  if (window.LexoAuth?.whenReady) {
-    await window.LexoAuth.whenReady();
-  }
-  window.LexoPerf?.endAuthLoad?.();
-
-  const user = window.LexoAuth?.getCurrentUser();
-  const name = user?.username || "Reader";
-
-  document.getElementById("welcomeText").textContent = window.LexoAuth?.isLoggedIn()
-    ? getTimeGreeting(name)
-    : "Welcome to Lexo";
-
+  const welcomeEl = document.getElementById("welcomeText");
   const recommendationsEl = document.getElementById("recommendations");
   if (recommendationsEl) {
     recommendationsEl.innerHTML = recommendationsSkeleton(3);
   }
 
-  await Promise.all([
-    window.LexoUserData?.hydrate?.().catch(() => {}),
-    LexoLibrary.ensureLoaded().catch(() => {}),
-  ]);
-  window.LexoPerf?.endBooksLoad?.();
+  // Shell first: greet from any already-synced session without awaiting network auth.
+  const paintWelcome = () => {
+    const user = window.LexoAuth?.getCurrentUser?.();
+    const name = user?.username || "Reader";
+    if (welcomeEl) {
+      welcomeEl.textContent = window.LexoAuth?.isLoggedIn?.()
+        ? getTimeGreeting(name)
+        : "Welcome to Lexo";
+    }
+  };
+  paintWelcome();
 
   let profile = LexoUI.readStorageJson("readerProfile");
 
-  const stats = LexoLibrary.getStats();
-  document.getElementById("readCount").textContent = stats.read;
-  document.getElementById("readingCount").textContent = stats.reading;
-  document.getElementById("wantCount").textContent = stats.want;
+  function paintLibrarySections() {
+    const stats = LexoLibrary.getStats();
+    const readEl = document.getElementById("readCount");
+    const readingEl = document.getElementById("readingCount");
+    const wantEl = document.getElementById("wantCount");
+    if (readEl) readEl.textContent = stats.read;
+    if (readingEl) readingEl.textContent = stats.reading;
+    if (wantEl) wantEl.textContent = stats.want;
 
-  const streakEl = document.getElementById("streakCount");
-  if (streakEl) {
-    streakEl.textContent = computeStreak(LexoLibrary.getReadingData().activity);
+    const streakEl = document.getElementById("streakCount");
+    if (streakEl) {
+      streakEl.textContent = computeStreak(LexoLibrary.getReadingData().activity);
+    }
+
+    renderContinueReading();
+    renderRecentlyAdded();
+    renderReadingGoal();
+    updateDNAProgress();
   }
 
-  renderContinueReading();
-  renderRecentlyAdded();
-  renderReadingGoal();
-
-  updateDNAProgress();
-  setupMoodAndGoal();
-  loadHomeIntelligence();
-  window.LexoPerf?.endPageLoad?.();
+  // Apply stale-while-revalidate library cache immediately (no await).
+  try {
+    const persisted = LexoLibrary._readPersistentCache?.();
+    if (persisted) {
+      LexoLibrary._applyPayload?.(persisted);
+      paintLibrarySections();
+    }
+  } catch (_) {
+    /* ignore */
+  }
 
   document.getElementById("refreshRecommendationsBtn")?.addEventListener("click", () => {
     fetchFreshRecommendations();
@@ -231,7 +238,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.addEventListener("lexo:library-changed", event => {
     if (event.detail?.action === "background-refresh" || event.detail?.action === "refresh") {
-      renderRecentlyAdded();
+      paintLibrarySections();
     }
     if (event.detail?.action === "goals-updated" || event.detail?.action === "progress") {
       renderReadingGoal();
@@ -243,6 +250,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderReadingGoal();
     }
   });
+
+  // Background hydrate — does not block first paint.
+  void (async () => {
+    if (window.LexoAuth?.whenReady) {
+      await window.LexoAuth.whenReady();
+    }
+    window.LexoPerf?.endAuthLoad?.();
+    paintWelcome();
+
+    await Promise.allSettled([
+      window.LexoUserData?.hydrate?.().catch(() => {}),
+      LexoLibrary.ensureLoaded().catch(() => {}),
+    ]);
+    window.LexoPerf?.endBooksLoad?.();
+    profile = LexoUI.readStorageJson("readerProfile") || profile;
+    paintLibrarySections();
+    window.LexoPerf?.endPageLoad?.();
+  })();
 
   function renderTopPickCover(topPick) {
     const slot = document.getElementById("topPickCover");
@@ -312,26 +337,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function loadHomeIntelligence({ force = false } = {}) {
     const subtitle = document.getElementById("homeSubtitle");
     const mission = document.getElementById("todayMission");
+    const mood = localStorage.getItem("lexo_today_mood");
+    const goal = localStorage.getItem("lexo_today_goal");
+    const cached = LexoAPI._readIntelligenceCache({ today_mood: mood, today_goal: goal });
 
+    // Normal loads never hit OpenAI — only explicit mood/goal changes do (force: true).
     if (!force) {
-      const mood = localStorage.getItem("lexo_today_mood");
-      const goal = localStorage.getItem("lexo_today_goal");
-      const cached = LexoAPI._readIntelligenceCache({ today_mood: mood, today_goal: goal });
-      if (cached?.dashboard) {
-        applyIntelligence(cached);
-        return;
-      }
+      if (cached?.dashboard) applyIntelligence(cached);
+      return;
     }
 
-    subtitle.textContent = "Lexo is personalizing your dashboard…";
-    mission.textContent = "Building today's mission…";
+    if (cached?.dashboard) applyIntelligence(cached);
+    else {
+      subtitle.textContent = "Lexo is personalizing your dashboard…";
+      mission.textContent = "Building today's mission…";
+    }
 
     try {
-      const intelligence = await LexoAPI.getReaderIntelligence({ force });
+      const intelligence = await LexoAPI.getReaderIntelligence({ force: true });
       applyIntelligence(intelligence);
     } catch {
-      subtitle.textContent = "Your personalized reading world is ready.";
-      mission.textContent = "Choose a mood and ask Lexo for suggestions.";
+      if (!cached?.dashboard) {
+        subtitle.textContent = "Your personalized reading world is ready.";
+        mission.textContent = "Choose a mood and ask Lexo for suggestions.";
+      }
     } finally {
       updateDNAProgress();
     }
@@ -409,6 +438,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadHomeIntelligence({ force: true });
       });
     });
+  }
+
+  setupMoodAndGoal();
+
+  // Cached dashboard copy only — never call OpenAI on normal page open.
+  const scheduleCachedIntelligence = () => {
+    const mood = localStorage.getItem("lexo_today_mood");
+    const goal = localStorage.getItem("lexo_today_goal");
+    const cached = LexoAPI._readIntelligenceCache?.({ today_mood: mood, today_goal: goal });
+    if (cached?.dashboard) applyIntelligence(cached);
+  };
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(scheduleCachedIntelligence, { timeout: 1500 });
+  } else {
+    setTimeout(scheduleCachedIntelligence, 200);
   }
 
   const RECOMMENDATION_BATCH_SIZE = 3;
@@ -776,7 +820,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!window.LexoAuth?.isLoggedIn?.()) return;
 
     try {
-      const remote = await LexoAPI.get("/api/reader/recommendations");
+      const remoteFetch = () => LexoAPI.get("/api/reader/recommendations");
+      const remote = window.LexoApiCache?.dedupe
+        ? await LexoApiCache.dedupe("recommendations", "latest", remoteFetch, {
+            ttlMs: 60 * 1000,
+          })
+        : await remoteFetch();
       const remoteItems = itemsFromServerPayload(remote);
       if (!remoteItems.length) return;
 
@@ -854,6 +903,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         batch_id: result.batch_id || null,
         generated_at: result.generated_at || null,
       };
+      window.LexoApiCache?.invalidate?.("recommendations");
       await renderRecommendations(items);
     } catch (error) {
       if (hadCards) {

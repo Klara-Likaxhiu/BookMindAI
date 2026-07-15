@@ -85,7 +85,10 @@ async function loadPathsFromServer() {
   const token = await LexoAPI.ensureAuth({ redirect: false });
   if (!token) return loadLocalPaths();
   try {
-    const data = await LexoAPI.get("/api/reading-paths");
+    const fetchRemote = () => LexoAPI.get("/api/reading-paths");
+    const data = window.LexoApiCache?.dedupe
+      ? await LexoApiCache.dedupe("reading-paths", "list", fetchRemote, { ttlMs: 60 * 1000 })
+      : await fetchRemote();
     if (Array.isArray(data?.paths) && data.paths.length) return normalize(data);
     const local = loadLocalPaths();
     if (local?.paths?.length) {
@@ -110,6 +113,7 @@ async function persistPaths(result, { immediate = false } = {}) {
         message: result.message,
         paths: result.paths,
       });
+      window.LexoApiCache?.invalidate?.("reading-paths");
       if (Array.isArray(data?.paths)) {
         const savedByKey = new Map(data.paths.map(path => [path.id || path.path_name, path]));
         const merged = result.paths.map(path => {

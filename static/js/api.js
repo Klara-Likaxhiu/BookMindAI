@@ -239,14 +239,26 @@ const LexoAPI = {
       if (cached) return cached;
     }
 
-    const intelligence = await this.post("/api/reader/intelligence", {
-      reader_profile: context,
-      library: context.library,
-      today_mood: context.today_mood,
-      today_goal: context.today_goal,
-    });
-    this._writeIntelligenceCache(context, intelligence);
-    return intelligence;
+    const fetchIntelligence = async () => {
+      const intelligence = await this.post("/api/reader/intelligence", {
+        reader_profile: context,
+        library: context.library,
+        today_mood: context.today_mood,
+        today_goal: context.today_goal,
+      });
+      this._writeIntelligenceCache(context, intelligence);
+      return intelligence;
+    };
+
+    if (window.LexoApiCache?.dedupe && !force) {
+      return LexoApiCache.dedupe(
+        "intelligence",
+        this._intelligenceCacheKey(context),
+        fetchIntelligence,
+        { ttlMs: 5 * 60 * 1000 }
+      );
+    }
+    return fetchIntelligence();
   },
 };
 

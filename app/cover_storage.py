@@ -8,8 +8,7 @@ import re
 import struct
 from typing import Any
 
-import httpx
-
+from app.http_client import get_http_client
 from app.supabase_client import supabase_anon_key, supabase_service_role_key, supabase_url
 from app.supabase_rest import SupabaseRestError, require_service_role
 
@@ -71,25 +70,26 @@ def ensure_bucket() -> None:
         "Content-Type": "application/json",
     }
 
-    with httpx.Client(timeout=20.0) as client:
-        probe = client.get(f"{base}/storage/v1/bucket/{BUCKET}", headers=headers)
-        if probe.status_code == 200:
-            _BUCKET_READY = True
-            return
+    client = get_http_client()
+    probe = client.get(f"{base}/storage/v1/bucket/{BUCKET}", headers=headers, timeout=20.0)
+    if probe.status_code == 200:
+        _BUCKET_READY = True
+        return
 
-        response = client.post(
-            f"{base}/storage/v1/bucket",
-            headers=headers,
-            json={"id": BUCKET, "name": BUCKET, "public": True},
-        )
-        if response.status_code in {200, 201, 409}:
-            _BUCKET_READY = True
-            return
+    response = client.post(
+        f"{base}/storage/v1/bucket",
+        headers=headers,
+        json={"id": BUCKET, "name": BUCKET, "public": True},
+        timeout=20.0,
+    )
+    if response.status_code in {200, 201, 409}:
+        _BUCKET_READY = True
+        return
 
-        raise SupabaseRestError(
-            f"Could not ensure storage bucket {BUCKET!r}: {response.status_code} {response.text[:200]}",
-            status_code=response.status_code,
-        )
+    raise SupabaseRestError(
+        f"Could not ensure storage bucket {BUCKET!r}: {response.status_code} {response.text[:200]}",
+        status_code=response.status_code,
+    )
 
 
 def upload_bytes(object_path: str, data: bytes, content_type: str) -> str:
@@ -97,17 +97,17 @@ def upload_bytes(object_path: str, data: bytes, content_type: str) -> str:
     base = supabase_url().rstrip("/")
     url = f"{base}/storage/v1/object/{BUCKET}/{object_path}"
 
-    with httpx.Client(timeout=30.0) as client:
-        response = client.post(
-            url,
-            headers=_storage_headers(content_type=content_type),
-            content=data,
+    response = get_http_client().post(
+        url,
+        headers=_storage_headers(content_type=content_type),
+        content=data,
+        timeout=30.0,
+    )
+    if response.status_code >= 400:
+        raise SupabaseRestError(
+            response.text or "Cover upload failed.",
+            status_code=response.status_code,
         )
-        if response.status_code >= 400:
-            raise SupabaseRestError(
-                response.text or "Cover upload failed.",
-                status_code=response.status_code,
-            )
 
     return public_storage_url(object_path)
 
@@ -125,13 +125,12 @@ def _sniff_image_content_type(data: bytes) -> str | None:
 
 
 def download_image(url: str) -> tuple[bytes, str]:
-    with httpx.Client(timeout=5.0, follow_redirects=True) as client:
-        response = client.get(url)
-        if response.status_code >= 400:
-            raise SupabaseRestError(
-                f"Cover download failed with status {response.status_code}.",
-                status_code=response.status_code,
-            )
+    response = get_http_client().get(url, timeout=5.0, follow_redirects=True)
+    if response.status_code >= 400:
+        raise SupabaseRestError(
+            f"Cover download failed with status {response.status_code}.",
+            status_code=response.status_code,
+        )
 
     data = response.content
     if len(data) < MIN_BYTES:

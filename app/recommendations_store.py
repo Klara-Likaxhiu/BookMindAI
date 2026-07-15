@@ -65,15 +65,15 @@ def _row_to_book(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_latest_recommendation_batch(user_id: str) -> dict[str, Any] | None:
-    """Return the most recent recommendation batch for a user, if any."""
+    """Return the most recent recommendation batch for a user (single query)."""
     rows = request(
         "GET",
         TABLE,
         params={
             "user_id": f"eq.{user_id}",
-            "select": "batch_id,generated_at",
+            "select": COLUMNS,
             "order": "generated_at.desc",
-            "limit": "1",
+            "limit": "12",
         },
     )
     if not isinstance(rows, list) or not rows:
@@ -83,17 +83,11 @@ def get_latest_recommendation_batch(user_id: str) -> dict[str, Any] | None:
     if not batch_id:
         return None
 
-    batch_rows = request(
-        "GET",
-        TABLE,
-        params={
-            "user_id": f"eq.{user_id}",
-            "batch_id": f"eq.{batch_id}",
-            "select": COLUMNS,
-            "order": "position.asc",
-        },
+    batch_rows = sorted(
+        [row for row in rows if row.get("batch_id") == batch_id],
+        key=lambda row: row.get("position") or 0,
     )
-    if not isinstance(batch_rows, list) or not batch_rows:
+    if not batch_rows:
         return None
 
     generated_at = batch_rows[0].get("generated_at")

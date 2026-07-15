@@ -7,8 +7,6 @@ import re
 from difflib import SequenceMatcher
 from typing import Any
 
-import httpx
-
 from app.cover_store import (
     format_source,
     get_cover_row,
@@ -17,6 +15,7 @@ from app.cover_store import (
     record_lookup_failure,
     upsert_cover,
 )
+from app.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -410,18 +409,19 @@ def _cover_url_is_usable(url: str | None) -> bool:
 
 def _url_exists(url: str) -> bool:
     try:
-        response = httpx.head(url, timeout=5.0, follow_redirects=True)
+        client = get_http_client()
+        response = client.head(url, timeout=5.0, follow_redirects=True)
         if 200 <= response.status_code < 400:
             return True
         if response.status_code in {403, 405}:
-            response = httpx.get(
+            response = client.get(
                 url,
                 timeout=5.0,
                 follow_redirects=True,
                 headers={"Range": "bytes=0-0"},
             )
             return 200 <= response.status_code < 400
-    except httpx.HTTPError:
+    except Exception:
         return False
     return False
 

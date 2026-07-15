@@ -10,13 +10,15 @@ Two backends are supported transparently:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import math
+import time
 from collections import Counter
 from typing import Iterable
 
-import httpx
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -175,6 +177,8 @@ def _truncate_for_model(text: str, max_chars: int = 24000) -> str:
 
 
 def _openai_chat_completion(messages: list[dict], temperature: float = 0.3) -> str:
+    from app.http_client import get_http_client
+
     url = f"{OPENAI_BASE_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -185,10 +189,13 @@ def _openai_chat_completion(messages: list[dict], temperature: float = 0.3) -> s
         "messages": messages,
         "temperature": temperature,
     }
-    with httpx.Client(timeout=60.0) as client:
-        resp = client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    started = time.perf_counter()
+    client = get_http_client()
+    resp = client.post(url, headers=headers, json=payload, timeout=60.0)
+    resp.raise_for_status()
+    data = resp.json()
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    logger.info({"event": "openai_chat", "durationMs": duration_ms, "model": OPENAI_MODEL})
     return data["choices"][0]["message"]["content"].strip()
 
 

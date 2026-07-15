@@ -412,11 +412,14 @@ const LexoDiscovery = {
       this.els.input.focus();
     });
 
+    let filterSearchTimer = null;
     this.els.filters.forEach(btn => {
       btn.addEventListener("click", () => {
         this.searchMode = btn.dataset.mode || "all";
         this.els.filters.forEach(el => el.classList.toggle("active", el === btn));
-        if (this.els.input.value.trim()) this.search();
+        if (!this.els.input.value.trim()) return;
+        clearTimeout(filterSearchTimer);
+        filterSearchTimer = setTimeout(() => this.search(), 350);
       });
     });
   },

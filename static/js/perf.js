@@ -1,8 +1,14 @@
-/** Temporary page-load performance instrumentation (enable with ?debug=perf). */
+/** Page-load performance instrumentation. Enable with ?debug=perf or localStorage lexo_debug_perf=1 */
 window.LexoPerf = {
   enabled: false,
   _requests: [],
   _started: false,
+  _marks: {},
+
+  mark(name) {
+    this._marks[name] = performance.now();
+    if (this.enabled) console.log(`[LexoPerf] mark:${name}`, Math.round(this._marks[name]), "ms");
+  },
 
   startPageLoad() {
     this.enabled =
@@ -10,6 +16,7 @@ window.LexoPerf = {
       localStorage.getItem("lexo_debug_perf") === "1";
     if (!this.enabled || this._started) return;
     this._started = true;
+    this.mark("start");
     console.time("page-load");
     console.time("auth-load");
     console.time("books-load");

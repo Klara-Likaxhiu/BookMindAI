@@ -62,6 +62,8 @@ const LexoUserData = {
     }
     const data = await LexoAPI.put("/api/user/settings", { settings: merged });
     localStorage.setItem("lexo_settings", JSON.stringify(data.settings || merged));
+    window.LexoApiCache?.invalidate?.("profile");
+    this._hydratedAt = 0;
     return data.settings || merged;
   },
 
@@ -132,6 +134,7 @@ const LexoUserData = {
 
     localStorage.setItem("readerProfile", JSON.stringify(profileData));
     this._hydratedAt = 0;
+    window.LexoApiCache?.invalidate?.("profile");
     return { answers, currentStep, completion };
   },
 
@@ -145,6 +148,7 @@ const LexoUserData = {
       profile_data: profile,
     });
     this._hydratedAt = 0;
+    window.LexoApiCache?.invalidate?.("profile");
     return data.profile || profile;
   },
 
@@ -156,12 +160,18 @@ const LexoUserData = {
 
     if (this._hydratePromise) return this._hydratePromise;
 
-    this._hydratePromise = Promise.all([this.loadSettings(), this.loadReaderProfile()])
-      .then(() => {
+    const run = () =>
+      Promise.all([this.loadSettings(), this.loadReaderProfile()]).then(() => {
         this._hydratedAt = Date.now();
-      })
+      });
+
+    this._hydratePromise = (
+      window.LexoApiCache?.dedupe && !force
+        ? LexoApiCache.dedupe("profile", "hydrate", run, { ttlMs: this._hydrateTtlMs })
+        : run()
+    )
       .catch(() => {
-        /* offline or unverified */
+        /* offline or unverified — do not cache failures */
       })
       .finally(() => {
         this._hydratePromise = null;

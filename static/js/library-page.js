@@ -125,7 +125,11 @@ function showState(type, message = "") {
   if (type === "loading") {
     if (loading) {
       loading.hidden = false;
-      loading.innerHTML = `<p class="small-muted">Loading your library…</p>`;
+      loading.innerHTML = `
+        <div class="library-skeleton-grid" aria-busy="true" aria-label="Loading your library">
+          ${Array.from({ length: 8 }, () => '<div class="skeleton skeleton-cover"></div>').join("")}
+        </div>
+      `;
     }
     return;
   }

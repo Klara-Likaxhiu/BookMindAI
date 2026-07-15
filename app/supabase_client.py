@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from app import auth as auth_utils
+from app.http_client import get_http_client
 
 
 class SupabaseAuthError(Exception):
@@ -91,14 +92,14 @@ def _request(
     api_key: str | None = None,
 ) -> dict[str, Any]:
     require_supabase()
-    with httpx.Client(timeout=20.0) as client:
-        response = client.request(
-            method,
-            _auth_url(path),
-            headers=_headers(api_key=api_key, access_token=access_token),
-            json=json,
-            params=params,
-        )
+    response = get_http_client().request(
+        method,
+        _auth_url(path),
+        headers=_headers(api_key=api_key, access_token=access_token),
+        json=json,
+        params=params,
+        timeout=20.0,
+    )
 
     if response.status_code >= 400:
         raise SupabaseAuthError(_parse_error(response), status_code=response.status_code)

@@ -222,7 +222,13 @@ const LexoLibrary = {
 
   async _fetchLibrary({ silent = false } = {}) {
     const prevBooks = this._books.slice();
-    const data = await this._request("/api/library");
+    const fetchRemote = () => this._request("/api/library");
+    const data = window.LexoApiCache?.dedupe
+      ? await LexoApiCache.dedupe("library", "full", fetchRemote, {
+          ttlMs: 60 * 1000,
+          skipMemory: Boolean(silent),
+        })
+      : await fetchRemote();
     this._applyPayload(data);
     this._writePersistentCache();
     const coversChanged = silent && this._coversChanged(prevBooks, this._books);
@@ -234,11 +240,28 @@ const LexoLibrary = {
   },
 
   _maybeBackfillCovers() {
+    // Only backfill on the library page, never force re-resolve of failed/ready covers,
+    // and at most once per day per browser.
+    try {
+      const page = document.querySelector("[data-page]")?.getAttribute("data-page") || "";
+      if (page !== "library") return;
+      const last = Number(localStorage.getItem("lexo_cover_backfill_at") || 0);
+      if (last && Date.now() - last < 24 * 60 * 60 * 1000) return;
+    } catch (_) {
+      return;
+    }
+
     if (this._backfillStarted) return;
     this._backfillStarted = true;
+    try {
+      localStorage.setItem("lexo_cover_backfill_at", String(Date.now()));
+    } catch (_) {
+      /* ignore */
+    }
+
     this._request("/api/library/backfill-covers", {
       method: "POST",
-      body: { limit: 100, force: true },
+      body: { limit: 12, force: false },
     })
       .then(result => {
         if (result?.repaired > 0) {
@@ -562,6 +585,11 @@ const LexoLibrary = {
   },
 
   _emitChange(detail) {
+    try {
+      window.LexoApiCache?.invalidate?.("library");
+    } catch (_) {
+      /* ignore */
+    }
     document.dispatchEvent(new CustomEvent("lexo:library-changed", { detail }));
   },
 

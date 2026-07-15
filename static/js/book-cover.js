@@ -295,7 +295,8 @@ const LexoCoverImage = {
   _shouldAttemptResolve(book) {
     if (this.getKnownUrl(book)) return false;
     const status = (book?.cover_status || "").toLowerCase();
-    if (status === "failed") return !book._coverRetried;
+    // Never auto-retry known failures on every page load.
+    if (status === "failed") return false;
     if (status === "resolving") {
       const started = book._resolveStartedAt || 0;
       return !started || Date.now() - started > COVER_RESOLVE_STALE_MS;
@@ -343,7 +344,7 @@ const LexoCoverImage = {
     const knownUrl = this.getKnownUrl(book);
     const rawCover = getFinalCoverUrl(book);
 
-    if (typeof console !== "undefined" && console.info) {
+    if (window.LexoPerf?.enabled && typeof console !== "undefined" && console.info) {
       console.info("[CoverDebug] render", {
         title: ref.title,
         cover_url: book.cover_url ?? null,
@@ -455,12 +456,13 @@ const LexoCoverImage = {
         if (data?.book && window.LexoLibrary?._upsertBookInCache) {
           LexoLibrary._upsertBookInCache(data.book);
         }
-        console.info("[CoverDebug] persisted", {
-          title: ref.title,
-          library_id: ref.library_id,
-          cover_url: url,
-        });
-      }
+        if (window.LexoPerf?.enabled) {
+          console.info("[CoverDebug] persisted", {
+            title: ref.title,
+            library_id: ref.library_id,
+            cover_url: url,
+          });
+        }      }
     } catch {
       /* best-effort */
     }
@@ -501,7 +503,6 @@ const LexoCoverImage = {
     })
       .then(r => (r.ok ? r.json() : { results: [] }))
       .then(async data => {
-        const retries = [];
         (data.results || []).forEach((result, index) => {
           const source = sourceBooks[index];
           if (!source) return;
@@ -514,14 +515,9 @@ const LexoCoverImage = {
               cover_source: result.cover_source,
             });
             this._persistCoverUrl(this.bookRef(source), url);
-          } else if (status === "failed" && !source._coverRetried) {
-            source._coverRetried = true;
-            retries.push(source);
           }
+          // Do not force-retry known failures on every render — that multiplies cover traffic.
         });
-        if (retries.length) {
-          await this._batchResolveBooks(retries, { force: true });
-        }
         return sourceBooks;
       })
       .catch(() => sourceBooks)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -27,6 +28,7 @@ from app.user_routes import router as user_router
 from app.auth_db import init_db
 from app.extract import UnsupportedFileType, extract_text  # noqa: E402
 from app.supabase_rest import SupabaseRestError
+from app.http_client import close_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -66,29 +68,48 @@ FRONTEND_PAGES: dict[str, str] = {
     "/verify-email-pending.html": "verify-email-pending.html",
 }
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    close_http_client()
+
+
 app = FastAPI(
     title="Lexo",
     description="AI-powered reading companion with personalized discovery and library tracking.",
     version=__version__,
+    lifespan=lifespan,
 )
 
 init_db()
 
 @app.middleware("http")
 async def log_request_duration(request, call_next):
-    if not request.url.path.startswith("/api/"):
-        return await call_next(request)
     started_at = time.perf_counter()
     response = await call_next(request)
     duration_ms = int((time.perf_counter() - started_at) * 1000)
-    logger.info(
-        {
-            "route": request.url.path,
-            "method": request.method,
-            "durationMs": duration_ms,
-            "status": response.status_code,
-        }
-    )
+    path = request.url.path
+
+    if path.startswith("/api/"):
+        response.headers["X-Response-Time-Ms"] = str(duration_ms)
+        if duration_ms >= 250:
+            logger.info(
+                "api_timing route=%s method=%s durationMs=%s status=%s",
+                path,
+                request.method,
+                duration_ms,
+                response.status_code,
+            )
+    elif path.endswith((".js", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".woff2", ".woff")):
+        # Long-cache fingerprinted/static assets served by the app process.
+        response.headers.setdefault(
+            "Cache-Control",
+            "public, max-age=86400, stale-while-revalidate=604800",
+        )
+    elif path.endswith(".html") or path in FRONTEND_PAGES or path in AUTH_PAGE_REDIRECTS:
+        response.headers.setdefault("Cache-Control", "public, max-age=0, must-revalidate")
+
     return response
 
 app.include_router(auth_router)
