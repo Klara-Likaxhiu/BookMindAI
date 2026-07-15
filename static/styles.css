@@ -1750,10 +1750,10 @@ html.auth-pending body {
 }
 
 .companion-book-card .custom-cover {
-  width: 64px;
-  height: 96px;
-  margin-bottom: 10px;
-  border-radius: 8px;
+  width: 16px;
+  height: 24px;
+  margin-bottom: 6px;
+  border-radius: 4px;
 }
 
 .companion-book-meta {
@@ -2357,11 +2357,11 @@ html.auth-pending body {
 }
 
 .companion-cover-wrap.book-cover-wrap {
-  width: 64px;
-  height: 96px;
+  width: 16px;
+  height: 24px;
   aspect-ratio: auto;
-  margin-bottom: 10px;
-  border-radius: 8px;
+  margin-bottom: 6px;
+  border-radius: 4px;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -2376,20 +2376,15 @@ html.auth-pending body {
 }
 
 .companion-cover-wrap .book-cover-placeholder {
-  padding: 6px;
-  gap: 4px;
+  padding: 0;
+  gap: 0;
 }
 
 .companion-cover-wrap .book-cover-title,
-.companion-cover-wrap .book-cover-placeholder strong.book-cover-title {
-  font-size: 9px;
-  line-height: 1.15;
-  -webkit-line-clamp: 3;
-}
-
+.companion-cover-wrap .book-cover-placeholder strong.book-cover-title,
 .companion-cover-wrap .book-cover-author,
 .companion-cover-wrap .book-cover-placeholder span.book-cover-author {
-  font-size: 7px;
+  display: none;
 }
 
 .community-card-cover.book-cover-wrap {
